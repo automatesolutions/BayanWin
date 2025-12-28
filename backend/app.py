@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime, date
 from services.instantdb_client import instantdb
-from scrapers.pcso_scraper import PCSOScraper
+from scrapers.google_sheets_scraper import GoogleSheetsScraper
 from ml_models.xgboost_model import XGBoostModel
 from ml_models.decision_tree import DecisionTreeModel
 from ml_models.markov_chain import MarkovChainModel
@@ -16,6 +16,9 @@ from config import Config
 from typing import Optional
 from pydantic import BaseModel
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -42,6 +45,8 @@ drl_agent = DRLAgent()
 
 # Pydantic models for request/response validation
 class ScrapeRequest(BaseModel):
+    # Date parameters not needed for Google Sheets (reads all data)
+    # Kept for API compatibility
     start_date: Optional[str] = None
     end_date: Optional[str] = None
 
@@ -106,7 +111,7 @@ async def get_results(
 
 @app.post("/api/scrape")
 async def scrape_data(request: ScrapeRequest):
-    """Trigger data scraping with optional date range."""
+    """Trigger data scraping with optional date range using Playwright. Defaults to January 2025 to present."""
     try:
         start_date = None
         end_date = None
@@ -116,25 +121,95 @@ async def scrape_data(request: ScrapeRequest):
                 start_date = datetime.strptime(request.start_date, '%Y-%m-%d')
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
+        else:
+            # Default to January 1, 2025 as requested
+            start_date = datetime(2025, 1, 1)
         
         if request.end_date:
             try:
                 end_date = datetime.strptime(request.end_date, '%Y-%m-%d')
             except ValueError:
                 raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
+        else:
+            # Default to today
+            end_date = datetime.now()
         
-        scraper = PCSOScraper()
-        stats = scraper.scrape_all_games(start_date=start_date, end_date=end_date)
+        logger.info("Starting scrape operation...")
+        scraper = GoogleSheetsScraper()
         
-        return {
-            'success': True,
-            'stats': stats,
-            'timestamp': datetime.now().isoformat()
+        try:
+            stats = await scraper.scrape_all_games()
+            logger.info(f"Scrape completed. Stats: {stats}")
+        except Exception as scrape_error:
+            logger.error(f"Scrape operation failed: {scrape_error}")
+            import traceback
+            logger.error(traceback.format_exc())
+            raise HTTPException(
+                status_code=500,
+                detail=f"Scraping failed: {str(scrape_error)}"
+            )
+        
+        # Check if scraping actually succeeded
+        total_added = stats.get('summary', {}).get('total_added', 0)
+        has_errors = any(
+            game_stats.get('error') for game_stats in stats.get('games', {}).values()
+        )
+        
+        # Log summary
+        logger.info(f"Scraping summary: {total_added} results added, errors: {has_errors}")
+        logger.info(f"Game stats: {stats.get('games', {})}")
+        
+        if has_errors and total_added == 0:
+            # All games failed
+            error_details = {
+                game: game_stats.get('error', 'Unknown error')
+                for game, game_stats in stats.get('games', {}).items()
+                if game_stats.get('error')
+            }
+            logger.error(f"All scraping failed: {error_details}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to scrape data: {error_details}"
+            )
+        
+        # Format stats for frontend compatibility
+        frontend_stats = {
+            'total_new': total_added,
+            'total_duplicates': stats.get('summary', {}).get('total_existing_in_db', 0),
+            'games_updated': [
+                game_type for game_type, game_stats in stats.get('games', {}).items()
+                if game_stats.get('added', 0) > 0
+            ],
+            'summary': stats.get('summary', {}),
+            'games': stats.get('games', {})
         }
+        
+        # Return success response
+        response = {
+            'success': True,
+            'stats': frontend_stats,
+            'timestamp': datetime.now().isoformat(),
+            'message': f'Successfully scraped {total_added} new results' if total_added > 0 else 'No new data to add (may already exist)'
+        }
+        
+        # Log if no data was added (might be because all data already exists)
+        if total_added == 0 and not has_errors:
+            logger.info("No new data added - all results may already exist in database")
+        else:
+            logger.info(f"✅ Successfully added {total_added} new results to InstantDB")
+        
+        return response
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in scrape endpoint: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        # Return error in format frontend expects
+        raise HTTPException(
+            status_code=500,
+            detail=f"Scraping failed: {str(e)}"
+        )
 
 @app.post("/api/predict/{game_type}")
 async def generate_predictions(game_type: str = Path(..., description="Game type identifier")):

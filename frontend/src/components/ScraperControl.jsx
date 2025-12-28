@@ -25,9 +25,10 @@ const ScraperControl = () => {
       setStatus({ type: 'success', message: 'Scraping completed successfully!' });
       setStats(response.data.stats);
     } catch (error) {
+      const errorMessage = error.response?.data?.detail || error.response?.data?.error || error.message || 'Failed to scrape data';
       setStatus({
         type: 'error',
-        message: error.response?.data?.error || 'Failed to scrape data'
+        message: errorMessage
       });
     } finally {
       setScraping(false);

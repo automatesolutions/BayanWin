@@ -78,9 +78,19 @@ class Config:
         }
     }
     
-    # Scraping Configuration
-    PCSO_URL = 'https://www.pcso.gov.ph/SearchLottoResult.aspx'
-    SCRAPING_TIMEOUT = 30
+    # Google Sheets Configuration (replaces PCSO scraping)
+    GOOGLE_SHEETS = {
+        'ultra_lotto_6_58': '1gh6yxZuaaCdx1imvJuk0-wXtMic4fcdm',
+        'grand_lotto_6_55': '1kuWordaccnhHATdaZr-qRhDPhPzxhcSU',
+        'super_lotto_6_49': '1tlAyfbtRTMXVWP-sk6V4jVW1fteZtMmq',
+        'mega_lotto_6_45': '1ydlcaUk_DG3XLPRcHk23tXBWvC83uPxH',
+        'lotto_6_42': '1E7_PnmkJc5wDL8OnEd1aljoUm5iDzEf3'
+    }
+    
+    # Google Sheets API Credentials (optional - can use public sheets)
+    # If sheets are public, no credentials needed
+    # If sheets are private, set GOOGLE_SERVICE_ACCOUNT_FILE path in .env
+    GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE', None)
     
     # ML Model Hyperparameters
     XGBOOST_PARAMS = {

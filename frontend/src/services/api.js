@@ -3,7 +3,7 @@ import { API_BASE_URL } from '../utils/constants';
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 300000, // 5 minutes for scraping large datasets
   headers: {
     'Content-Type': 'application/json',
   },

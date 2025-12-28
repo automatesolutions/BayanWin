@@ -6,7 +6,7 @@ const Footer = () => {
       <div className="container mx-auto px-4 py-6">
         <div className="text-center">
           <p className="text-sm font-medium">
-            &copy; 2024 BayanWin App
+            &copy; 2026 BayanWin App
           </p>
           <p className="text-xs mt-2 text-silver-500">
             Disclaimer: This application is for entertainment purposes only. 

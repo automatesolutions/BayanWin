@@ -32,28 +32,36 @@ class InstantDBClient:
     
     def _make_request(self, method: str, endpoint: str, data: Optional[Dict] = None) -> Dict:
         """Make HTTP request to InstantDB API."""
+        import logging
+        logger = logging.getLogger(__name__)
+        
         url = f"{self.base_url}/{endpoint}"
         
         try:
             if method == 'GET':
-                response = requests.get(url, headers=self.headers, params=data)
+                response = requests.get(url, headers=self.headers, params=data, timeout=60)
             elif method == 'POST':
-                response = requests.post(url, headers=self.headers, json=data)
+                logger.debug(f"POST to {url} with data: {data}")
+                response = requests.post(url, headers=self.headers, json=data, timeout=60)
             elif method == 'PUT':
-                response = requests.put(url, headers=self.headers, json=data)
+                response = requests.put(url, headers=self.headers, json=data, timeout=30)
             elif method == 'DELETE':
-                response = requests.delete(url, headers=self.headers)
+                response = requests.delete(url, headers=self.headers, timeout=30)
             else:
                 raise ValueError(f"Unsupported HTTP method: {method}")
             
             response.raise_for_status()
-            return response.json() if response.content else {}
+            result = response.json() if response.content else {}
+            logger.debug(f"InstantDB API {method} {endpoint} success: {result}")
+            return result
             
         except requests.exceptions.RequestException as e:
-            print(f"InstantDB API Error: {e}")
-            if hasattr(e.response, 'text'):
-                print(f"Response: {e.response.text}")
-            raise
+            error_msg = f"InstantDB API Error: {e}"
+            logger.error(error_msg)
+            if hasattr(e, 'response') and e.response is not None:
+                logger.error(f"Response status: {e.response.status_code}")
+                logger.error(f"Response text: {e.response.text[:500]}")
+            raise Exception(error_msg) from e
     
     # Results Operations
     def create_result(self, game_type: str, result_data: Dict) -> Dict:
