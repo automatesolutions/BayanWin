@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Modern Tech Color Palette */
+  --color-electric: #3498DB;
+  --color-orange: #E67E22;
+  --color-charcoal: #2C3E50;
+  --color-silver: #BDC3C7;
+  
+  /* Legacy aliases */
+  --color-primary: #3498DB;
+  --color-secondary: #E67E22;
+  --color-success: #10b981;
+  --color-error: #ef4444;
+}
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #2C3E50;
+  color: #ECF0F1;
+}
+
+/* Modern tech feel - subtle animations */
+@keyframes pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(52, 152, 219, 0.8);
+  }
+}
+
+.tech-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+* {
+  box-sizing: border-box;
+}
+
