@@ -124,10 +124,12 @@ class InstantDBClient:
                 'results': [instantdb_data]
             }
             
-            # Set environment variables for Node.js script
+            # Set environment variables for Node.js script - ensure they're not None
             env = os.environ.copy()
-            env['INSTANTDB_APP_ID'] = self.app_id
-            env['INSTANTDB_ADMIN_TOKEN'] = self.admin_token
+            if self.app_id:
+                env['INSTANTDB_APP_ID'] = str(self.app_id)
+            if self.admin_token:
+                env['INSTANTDB_ADMIN_TOKEN'] = str(self.admin_token)
             
             # Call Node.js script
             result = subprocess.run(
@@ -194,11 +196,13 @@ class InstantDBClient:
                 'order_by': order_by
             }
             
-            # Set environment variables
+            # Set environment variables - ensure they're not None
             env = os.environ.copy()
             from config import Config
-            env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
-            env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
+            if Config.INSTANTDB_APP_ID:
+                env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
+            if Config.INSTANTDB_ADMIN_TOKEN:
+                env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
             
             # Call Node.js script
             result = subprocess.run(
@@ -366,10 +370,12 @@ class InstantDBClient:
                 'prediction': instantdb_data
             }
             
-            # Set environment variables for Node.js script
+            # Set environment variables for Node.js script - ensure they're not None
             env = os.environ.copy()
-            env['INSTANTDB_APP_ID'] = self.app_id
-            env['INSTANTDB_ADMIN_TOKEN'] = self.admin_token
+            if self.app_id:
+                env['INSTANTDB_APP_ID'] = str(self.app_id)
+            if self.admin_token:
+                env['INSTANTDB_ADMIN_TOKEN'] = str(self.admin_token)
             
             # Call Node.js script
             result = subprocess.run(

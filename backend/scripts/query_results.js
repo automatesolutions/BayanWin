@@ -1,10 +1,29 @@
 // Node.js script to query lottery results from InstantDB with proper sorting
 const { init } = require('@instantdb/admin');
 
-const appId = process.env.INSTANTDB_APP_ID || 'beb7efd4-c8f7-4157-ad5a-80b2f55f4f87';
-const adminToken = process.env.INSTANTDB_ADMIN_TOKEN || 'c2a8a500-921f-449a-8fcd-b365f84cf172';
+// Get credentials from environment - ensure they're valid strings
+const appId = process.env.INSTANTDB_APP_ID;
+const adminToken = process.env.INSTANTDB_ADMIN_TOKEN;
 
-const db = init({ appId, adminToken });
+// Validate credentials
+if (!appId || appId === 'None' || appId === 'null' || appId.trim() === '') {
+  console.error(JSON.stringify({ 
+    error: 'INSTANTDB_APP_ID is required and must be a valid string',
+    received: appId 
+  }));
+  process.exit(1);
+}
+
+if (!adminToken || adminToken === 'None' || adminToken === 'null' || adminToken.trim() === '') {
+  console.error(JSON.stringify({ 
+    error: 'INSTANTDB_ADMIN_TOKEN is required and must be a valid string',
+    received: adminToken ? '***' : null
+  }));
+  process.exit(1);
+}
+
+// Initialize InstantDB Admin SDK
+const db = init({ appId: appId.trim(), adminToken: adminToken.trim() });
 
 // Read input from stdin
 let inputData = '';
