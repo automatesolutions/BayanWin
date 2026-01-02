@@ -5,11 +5,11 @@ NIXPACKS_PYTHON_VERSION = "3.11"
 nixPkgs = ["python311", "nodejs"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = ["cd backend && pip install -r requirements.txt"]
 
 [phases.build]
 cmds = []
 
 [start]
-cmd = "cd backend && uvicorn app:app --host 0.0.0.0 --port $PORT"
+cmd = "cd backend && python -m uvicorn app:app --host 0.0.0.0 --port $PORT"
 
