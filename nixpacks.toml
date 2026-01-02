@@ -2,13 +2,17 @@
 NIXPACKS_PYTHON_VERSION = "3.11"
 
 [phases.setup]
-nixPkgs = ["python311"]
+nixPkgs = ["python311", "pip"]
 
 [phases.install]
 cmds = [
+    "python --version",
+    "pip --version",
     "cd backend",
     "pip install --upgrade pip",
-    "pip install -r requirements.txt"
+    "pip install -r requirements.txt",
+    "which uvicorn || echo 'uvicorn not found'",
+    "python -m pip list | grep uvicorn || echo 'uvicorn not in pip list'"
 ]
 
 [phases.build]
