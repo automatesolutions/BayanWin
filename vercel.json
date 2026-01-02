@@ -1,0 +1,7 @@
+{
+  "buildCommand": "cd lof-v2-db && npm run build",
+  "outputDirectory": "lof-v2-db/.next",
+  "installCommand": "cd lof-v2-db && npm install",
+  "framework": "nextjs"
+}
+
