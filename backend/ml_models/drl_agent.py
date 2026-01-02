@@ -233,7 +233,9 @@ class DRLAgent:
                 print(f"      DRL training: {episode}/{episodes} episodes...")
             
             state = self._get_state(game_type)
-            state_reshaped = state.reshape(1, -1)  # For prediction
+            # Ensure state is 1D and has correct shape
+            state_1d = np.array(state).flatten()
+            state_reshaped = state_1d.reshape(1, -1)  # For prediction
             
             # Epsilon-greedy action selection
             if np.random.random() <= self.epsilon:
@@ -257,9 +259,9 @@ class DRLAgent:
             # Calculate reward
             reward = self._calculate_reward(predicted, actual, game_type)
             
-            # Store in memory - flatten state to 1D for consistent batch creation
-            state_flattened = state.flatten()
-            self.memory.append((state_flattened, action, reward))
+            # Store in memory - ensure state is 1D array with consistent shape
+            # Store as numpy array with explicit dtype to ensure consistency
+            self.memory.append((state_1d.astype(np.float32), action, reward))
             
             # Update epsilon
             if self.epsilon > self.epsilon_min:
@@ -267,11 +269,17 @@ class DRLAgent:
             
             # Train on batch if memory is sufficient
             if len(self.memory) >= 32:
-                batch = np.random.choice(len(self.memory), size=min(32, len(self.memory)), replace=False)
-                # States are already flattened when stored, but ensure consistent shape
-                states_batch = np.array([self.memory[i][0] for i in batch])
-                actions_batch = np.array([self.memory[i][1] for i in batch])
-                rewards_batch = np.array([self.memory[i][2] for i in batch])
+                batch_indices = np.random.choice(len(self.memory), size=min(32, len(self.memory)), replace=False)
+                # Get states from memory - they should all have the same shape
+                # Use stack instead of array to ensure proper shape handling
+                try:
+                    states_batch = np.stack([self.memory[i][0] for i in batch_indices])
+                except ValueError as e:
+                    # If shapes don't match, log and skip this batch
+                    print(f"      Warning: State shape mismatch in batch, skipping training: {e}")
+                    continue
+                actions_batch = np.array([self.memory[i][1] for i in batch_indices])
+                rewards_batch = np.array([self.memory[i][2] for i in batch_indices])
                 
                 # Update Q-values
                 q_values = self.model.predict(states_batch, verbose=0)
