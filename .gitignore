@@ -60,6 +60,6 @@ Thumbs.db
 # Logs
 *.log
 
-# InstantDB scaffolded project (not used in main app)
-lof-v2-db/
+# Note: lof-v2-db/ is now included in the repository for Vercel deployment
+# .env.local files are still ignored (see line 32)
 
