@@ -1,7 +1,7 @@
 "use client";
 
-import { db } from "@/lib/db";
-import { type AppSchema } from "@/instant.schema";
+import { db } from "../lib/db";
+import { type AppSchema } from "../instant.schema";
 import { id, InstaQLEntity } from "@instantdb/react";
 
 type Todo = InstaQLEntity<AppSchema, "todos">;
