@@ -13,22 +13,30 @@ class Config:
     
     # InstantDB App ID (required)
     # Get from: https://www.instantdb.com/dash
-    # Must be set in .env file - no hardcoded defaults!
+    # Must be set in .env file or environment variables - no hardcoded defaults!
     INSTANTDB_APP_ID = os.getenv('INSTANTDB_APP_ID')
     if not INSTANTDB_APP_ID:
-        raise ValueError(
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(
             'INSTANTDB_APP_ID environment variable is required. '
-            'Get your App ID from https://www.instantdb.com/dash and add it to your .env file.'
+            'Get your App ID from https://www.instantdb.com/dash and add it to Railway environment variables.'
         )
+        # Don't crash on startup - allow health check to work
+        INSTANTDB_APP_ID = None
     
     # InstantDB Admin Token (required for backend API access)
     # Get from: InstantDB dashboard → Admin → Secret field
     INSTANTDB_ADMIN_TOKEN = os.getenv('INSTANTDB_ADMIN_TOKEN')
     if not INSTANTDB_ADMIN_TOKEN:
-        raise ValueError(
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(
             'INSTANTDB_ADMIN_TOKEN environment variable is required. '
-            'Get your admin token from InstantDB dashboard → Admin → Secret field'
+            'Get your admin token from InstantDB dashboard → Admin → Secret field and add it to Railway environment variables.'
         )
+        # Don't crash on startup - allow health check to work
+        INSTANTDB_ADMIN_TOKEN = None
     
     # ✅ InstantDB Only - No DATABASE_URL needed!
     # All database operations use InstantDB API (App ID + Token)

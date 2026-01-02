@@ -20,9 +20,18 @@ class InstantDBClient:
         self.app_id = Config.INSTANTDB_APP_ID
         self.admin_token = Config.INSTANTDB_ADMIN_TOKEN
         
+        if not self.app_id or not self.admin_token:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning("InstantDB credentials not configured. API calls will fail until credentials are set.")
+        
         # InstantDB API base URL
         # Note: Check InstantDB docs for actual API endpoint
-        self.base_url = f"https://api.instantdb.com/v1/apps/{self.app_id}"
+        if self.app_id:
+            self.base_url = f"https://api.instantdb.com/v1/apps/{self.app_id}"
+        else:
+            self.base_url = None
+            
         self.headers = {
             'Content-Type': 'application/json',
             'Authorization': f'Bearer {self.admin_token}' if self.admin_token else None
