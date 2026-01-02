@@ -49,6 +49,7 @@ class ScrapeRequest(BaseModel):
     # Kept for API compatibility
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    game_type: Optional[str] = None  # If specified, only scrape this game
 
 class CalculateAccuracyRequest(BaseModel):
     result_id: str  # Changed to string for InstantDB IDs
@@ -111,34 +112,36 @@ async def get_results(
 
 @app.post("/api/scrape")
 async def scrape_data(request: ScrapeRequest):
-    """Trigger data scraping with optional date range using Playwright. Defaults to January 2025 to present."""
+    """Trigger data scraping from Google Sheets. Can scrape all games or a specific game."""
     try:
-        start_date = None
-        end_date = None
-        
-        if request.start_date:
-            try:
-                start_date = datetime.strptime(request.start_date, '%Y-%m-%d')
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD")
-        else:
-            # Default to January 1, 2025 as requested
-            start_date = datetime(2025, 1, 1)
-        
-        if request.end_date:
-            try:
-                end_date = datetime.strptime(request.end_date, '%Y-%m-%d')
-            except ValueError:
-                raise HTTPException(status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD")
-        else:
-            # Default to today
-            end_date = datetime.now()
-        
         logger.info("Starting scrape operation...")
         scraper = GoogleSheetsScraper()
         
         try:
-            stats = await scraper.scrape_all_games()
+            # If game_type is specified, scrape only that game
+            if request.game_type:
+                if request.game_type not in Config.GAMES:
+                    raise HTTPException(status_code=400, detail=f"Invalid game type: {request.game_type}")
+                
+                logger.info(f"Scraping single game: {request.game_type}")
+                game_stats = await scraper.scrape_game(request.game_type)
+                
+                # Format response for single game
+                stats = {
+                    'total_games': 1,
+                    'games': {request.game_type: game_stats},
+                    'summary': {
+                        'total_results_in_sheets': game_stats.get('total_in_sheet', 0),
+                        'total_existing_in_db': game_stats.get('existing_in_db', 0),
+                        'total_new_results': game_stats.get('new_results', 0),
+                        'total_added': game_stats.get('added', 0)
+                    }
+                }
+            else:
+                # Scrape all games
+                logger.info("Scraping all games")
+                stats = await scraper.scrape_all_games()
+            
             logger.info(f"Scrape completed. Stats: {stats}")
         except Exception as scrape_error:
             logger.error(f"Scrape operation failed: {scrape_error}")
@@ -212,13 +215,26 @@ async def scrape_data(request: ScrapeRequest):
         )
 
 @app.post("/api/predict/{game_type}")
-async def generate_predictions(game_type: str = Path(..., description="Game type identifier")):
+def generate_predictions(game_type: str = Path(..., description="Game type identifier")):
     """Get predictions from all 5 models."""
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
     
     try:
         target_draw_date = date.today().isoformat()
+        game_name = Config.GAMES[game_type]['name']
+        
+        # START LOGGING
+        print("=" * 80)
+        print(f"STARTING PREDICTION GENERATION FOR {game_name}")
+        print(f"   Game Type: {game_type}")
+        print(f"   Target Date: {target_draw_date}")
+        print("=" * 80)
+        logger.info("=" * 80)
+        logger.info(f"🎯 STARTING PREDICTION GENERATION FOR {game_name}")
+        logger.info(f"   Game Type: {game_type}")
+        logger.info(f"   Target Date: {target_draw_date}")
+        logger.info("=" * 80)
         
         predictions = {}
         model_types = {
@@ -229,10 +245,32 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
             'DRL': drl_agent
         }
         
+        total_models = len(model_types)
+        current_model = 0
+        
         for model_name, model_instance in model_types.items():
+            current_model += 1
             try:
-                # Generate prediction (models now use InstantDB internally)
-                predicted_numbers = model_instance.predict(game_type)
+                # MODEL START
+                print(f"\n[{current_model}/{total_models}] Training/Predicting with {model_name}...")
+                logger.info(f"\n[{current_model}/{total_models}] 🤖 Training/Predicting with {model_name}...")
+                import time
+                start_time = time.time()
+                
+                # Generate prediction with timeout (60 seconds per model)
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(model_instance.predict, game_type)
+                    try:
+                        predicted_numbers = future.result(timeout=60)  # 60 second timeout
+                    except concurrent.futures.TimeoutError:
+                        raise TimeoutError(f"{model_name} took longer than 60 seconds")
+                
+                elapsed = time.time() - start_time
+                print(f"   ✅ {model_name} completed in {elapsed:.2f}s")
+                print(f"   📊 Predicted numbers: {predicted_numbers}")
+                logger.info(f"   ✅ {model_name} completed in {elapsed:.2f}s")
+                logger.info(f"   📊 Predicted numbers: {predicted_numbers}")
                 
                 # Get previous 5 predictions for this model
                 previous_predictions = instantdb.get_predictions(game_type, limit=5)
@@ -251,6 +289,8 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
                     prev_preds.append(None)
                 
                 # Store prediction in InstantDB
+                print(f"   💾 Saving {model_name} prediction to database...")
+                logger.info(f"   💾 Saving {model_name} prediction to database...")
                 prediction_data = {
                     'target_draw_date': target_draw_date,
                     'model_type': model_name,
@@ -269,6 +309,9 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
                 }
                 
                 new_prediction = instantdb.create_prediction(game_type, prediction_data)
+                prediction_id = new_prediction.get('id', 'unknown')
+                print(f"   ✅ Saved with ID: {prediction_id}")
+                logger.info(f"   ✅ Saved with ID: {prediction_id}")
                 
                 predictions[model_name] = {
                     'numbers': predicted_numbers,
@@ -277,9 +320,23 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
                 }
                 
             except Exception as e:
+                print(f"   ❌ {model_name} FAILED: {str(e)}")
+                logger.error(f"   ❌ {model_name} FAILED: {str(e)}")
                 predictions[model_name] = {
                     'error': str(e)
                 }
+        
+        # COMPLETION LOGGING
+        print("\n" + "=" * 80)
+        print(f"PREDICTION GENERATION COMPLETE!")
+        print(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{total_models}")
+        print(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{total_models}")
+        print("=" * 80)
+        logger.info("\n" + "=" * 80)
+        logger.info(f"🎉 PREDICTION GENERATION COMPLETE!")
+        logger.info(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{total_models}")
+        logger.info(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{total_models}")
+        logger.info("=" * 80)
         
         return {
             'success': True,
@@ -292,6 +349,7 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
     except HTTPException:
         raise
     except Exception as e:
+        logger.error(f"❌ PREDICTION GENERATION FAILED: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/predictions/{game_type}")
@@ -479,6 +537,91 @@ async def get_statistics(game_type: str = Path(..., description="Game type ident
         }
     
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/stats/{game_type}/gaussian")
+async def get_gaussian_distribution(game_type: str = Path(..., description="Game type identifier")):
+    """Get Gaussian distribution analysis of winning numbers."""
+    if game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    
+    try:
+        # Get all results
+        all_results = instantdb.get_results(game_type, limit=10000, offset=0, order_by='draw_date.asc')
+        
+        distribution_data = []
+        for result in all_results:
+            numbers = [
+                result.get('number_1'), result.get('number_2'), result.get('number_3'),
+                result.get('number_4'), result.get('number_5'), result.get('number_6')
+            ]
+            
+            # Filter out None values
+            numbers = [n for n in numbers if n is not None]
+            
+            if len(numbers) == 6:
+                # Calculate sum and product
+                numbers_sum = sum(numbers)
+                numbers_product = 1
+                for num in numbers:
+                    numbers_product *= num
+                
+                distribution_data.append({
+                    'sum': numbers_sum,
+                    'product': numbers_product,
+                    'draw_date': result.get('draw_date'),
+                    'numbers': numbers,
+                    'winners': result.get('winners', 0),
+                    'jackpot': result.get('jackpot', 0)
+                })
+        
+        # Calculate statistics for Gaussian curve
+        if distribution_data:
+            sums = [d['sum'] for d in distribution_data]
+            products = [d['product'] for d in distribution_data]
+            
+            import numpy as np
+            
+            # Calculate mean and std for sum
+            sum_mean = np.mean(sums)
+            sum_std = np.std(sums)
+            
+            # Calculate mean and std for product (use log scale due to large values)
+            log_products = [np.log(p) if p > 0 else 0 for p in products]
+            product_mean = np.mean(products)
+            product_std = np.std(products)
+            log_product_mean = np.mean(log_products)
+            log_product_std = np.std(log_products)
+            
+            return {
+                'distribution_data': distribution_data,
+                'statistics': {
+                    'sum': {
+                        'mean': float(sum_mean),
+                        'std': float(sum_std),
+                        'min': min(sums),
+                        'max': max(sums),
+                        'count': len(sums)
+                    },
+                    'product': {
+                        'mean': float(product_mean),
+                        'std': float(product_std),
+                        'min': min(products),
+                        'max': max(products),
+                        'log_mean': float(log_product_mean),
+                        'log_std': float(log_product_std),
+                        'count': len(products)
+                    }
+                }
+            }
+        
+        return {
+            'distribution_data': [],
+            'statistics': None
+        }
+    
+    except Exception as e:
+        logger.error(f"Error calculating Gaussian distribution: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/health")

@@ -220,10 +220,17 @@ class GoogleSheetsScraper:
                 # Filter by LottoGame column if it exists
                 if lotto_game_col:
                     lotto_game_value = str(row[lotto_game_col]) if lotto_game_col in row and pd.notna(row[lotto_game_col]) else ''
-                    # Check if this row matches the expected game
-                    if lotto_game_value and expected_game_name.lower() not in lotto_game_value.lower():
-                        # Skip rows that don't match the game type
-                        continue
+                    
+                    if lotto_game_value:
+                        # Normalize by removing spaces and converting to lowercase for comparison
+                        # This handles variations like "Superlotto 6/49" vs "Super Lotto 6/49"
+                        expected_normalized = expected_game_name.lower().replace(' ', '')
+                        lotto_value_normalized = lotto_game_value.lower().replace(' ', '')
+                        
+                        # Check if normalized strings match (bidirectional check for flexibility)
+                        if expected_normalized not in lotto_value_normalized and lotto_value_normalized not in expected_normalized:
+                            # Skip rows that don't match the game type
+                            continue
                 
                 # Get values from columns (handle NaN values)
                 combinations_str = str(row[combinations_col]) if combinations_col and combinations_col in row and pd.notna(row[combinations_col]) else ''
@@ -289,20 +296,27 @@ class GoogleSheetsScraper:
         """Get existing results from InstantDB to check for duplicates."""
         try:
             existing = instantdb.get_results(game_type, limit=10000)  # Get all results
-            # Create a lookup by draw_date
+            # Create a lookup by draw_date AND draw_number for better duplicate detection
             lookup = {}
             for result in existing:
                 draw_date = result.get('draw_date')
+                draw_number = result.get('draw_number', '')
+                
                 if draw_date:
                     # Normalize date format for comparison
                     if isinstance(draw_date, str):
                         try:
                             dt = datetime.fromisoformat(draw_date.replace('Z', '+00:00'))
-                            lookup[dt.date().isoformat()] = result
+                            date_key = dt.date().isoformat()
                         except:
-                            lookup[draw_date] = result
+                            date_key = draw_date
                     else:
-                        lookup[str(draw_date)] = result
+                        date_key = str(draw_date)
+                    
+                    # Create composite key: "date|draw_number"
+                    composite_key = f"{date_key}|{draw_number}"
+                    lookup[composite_key] = result
+            
             return lookup
         except Exception as e:
             logger.warning(f"Could not fetch existing results: {e}")
@@ -327,16 +341,30 @@ class GoogleSheetsScraper:
             sheet_results = self._parse_sheet_data(df, game_type)
             logger.info(f"Parsed {len(sheet_results)} results from sheet")
             
+            # Sort by draw_date to preserve Google Sheets order (oldest to newest)
+            sheet_results.sort(key=lambda x: x['draw_date'])
+            logger.info(f"Sorted {len(sheet_results)} results by draw_date (oldest to newest)")
+            if sheet_results:
+                logger.info(f"  First date: {sheet_results[0]['draw_date']}")
+                logger.info(f"  Last date: {sheet_results[-1]['draw_date']}")
+            
             # Get existing results from InstantDB
             existing_results = self._get_existing_results(game_type)
             logger.info(f"Found {len(existing_results)} existing results in database")
             
-            # Filter out duplicates
+            # Filter out duplicates using both draw_date AND draw_number
             new_results = []
             for result in sheet_results:
                 draw_date = datetime.fromisoformat(result['draw_date']).date().isoformat()
-                if draw_date not in existing_results:
+                draw_number = result.get('draw_number', '')
+                
+                # Create composite key to match the lookup
+                composite_key = f"{draw_date}|{draw_number}"
+                
+                if composite_key not in existing_results:
                     new_results.append(result)
+                else:
+                    logger.debug(f"Skipping duplicate: {draw_date} - {draw_number}")
             
             logger.info(f"Found {len(new_results)} new results to add")
             

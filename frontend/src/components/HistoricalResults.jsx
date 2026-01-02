@@ -62,18 +62,22 @@ const HistoricalResults = ({ gameType }) => {
                 {results.map((result) => (
                   <tr key={result.id} className="hover:bg-electric-900/20 transition-colors">
                     <td className="px-4 py-3 text-sm text-silver-200 font-medium">{formatDate(result.draw_date)}</td>
-                    <td className="px-4 py-3 text-sm text-silver-200 font-mono">{result.draw_number}</td>
+                    <td className="px-4 py-3 text-sm text-silver-200 font-mono">{result.draw_number || 'N/A'}</td>
                     <td className="px-4 py-3">
                       <div className="flex flex-wrap gap-1">
-                        {result.numbers.map((num, idx) => (
-                          <NumberBall key={idx} number={num} size="sm" />
-                        ))}
+                        {result.numbers && result.numbers.length > 0 ? (
+                          result.numbers.map((num, idx) => (
+                            <NumberBall key={idx} number={num} size="sm" />
+                          ))
+                        ) : (
+                          <span className="text-silver-400 text-sm">No numbers</span>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3 text-sm text-orange-300 font-semibold">
                       {result.jackpot ? formatCurrency(result.jackpot) : 'N/A'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-silver-200">{result.winners || 'N/A'}</td>
+                    <td className="px-4 py-3 text-sm text-silver-200">{result.winners !== null && result.winners !== undefined ? result.winners : 'N/A'}</td>
                   </tr>
                 ))}
               </tbody>

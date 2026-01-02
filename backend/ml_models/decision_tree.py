@@ -13,6 +13,7 @@ class DecisionTreeModel:
     def __init__(self):
         self.model = None
         self.is_trained = False
+        self.trained_game_type = None  # Track which game type this model was trained on
         
     def train(self, game_type: str):
         """
@@ -34,7 +35,7 @@ class DecisionTreeModel:
         X_list = []
         y_list = []
         
-        frequency = calculate_frequency(game_type, db)
+        frequency = calculate_frequency(game_type)
         
         for idx in range(len(df)):
             if idx == 0:
@@ -84,6 +85,7 @@ class DecisionTreeModel:
         self.model = RandomForestClassifier(**params)
         self.model.fit(X_train, y_train)
         self.is_trained = True
+        self.trained_game_type = game_type  # Remember which game type we trained on
     
     def predict(self, game_type: str) -> List[int]:
         """
@@ -96,22 +98,23 @@ class DecisionTreeModel:
         Returns:
             List of 6 predicted numbers
         """
-        if not self.is_trained:
+        # Retrain if not trained or if game type changed (different max_number = different feature size)
+        if not self.is_trained or self.trained_game_type != game_type:
             self.train(game_type)
         
         max_number = Config.GAMES[game_type]['max_number']
         
         # Get latest draw for features
-        df = get_historical_data(game_type, db, limit=1)
+        df = get_historical_data(game_type, limit=1)
         
         if df.empty:
             # No historical data, use frequency-based prediction
-            frequency = calculate_frequency(game_type, db)
+            frequency = calculate_frequency(game_type)
             sorted_numbers = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
-            return [num for num, _ in sorted_numbers[:6]]
+            return [int(num) for num, _ in sorted_numbers[:6]]
         
         # Prepare feature vector
-        frequency = calculate_frequency(game_type, db)
+        frequency = calculate_frequency(game_type)
         freq_features = [frequency.get(i, 0) for i in range(1, max_number + 1)]
         
         latest_row = df.iloc[0]
@@ -130,22 +133,41 @@ class DecisionTreeModel:
         
         X = np.concatenate([freq_features, prev_features, stat_features]).reshape(1, -1)
         
-        # Predict probabilities
-        probabilities = self.model.predict_proba(X)[0]
+        # Predict probabilities for each number
+        # For multi-output RandomForest, predict_proba returns a LIST of arrays
+        # Each array is (n_samples, n_classes) for that output
+        probabilities = self.model.predict_proba(X)
         
-        # Select top 6 numbers
-        top_indices = np.argsort(probabilities)[::-1][:6]
-        predicted_numbers = [idx + 1 for idx in top_indices if idx < max_number]
-        predicted_numbers = list(set(predicted_numbers))[:6]
+        # Extract probability of "appearing" (class 1) for each number
+        if isinstance(probabilities, list):
+            # Multi-output case: list of (1, 2) arrays
+            # Take probability of class 1 (appearing) for each number
+            appear_probs = np.array([probs[0, 1] for probs in probabilities])
+        elif len(probabilities.shape) == 3:
+            # Alternative multi-output format: (1, n_numbers, 2)
+            appear_probs = probabilities[0, :, 1]
+        else:
+            # Single output case
+            appear_probs = probabilities[0]
+        
+        # Select top 6 numbers with highest appearance probability
+        top_indices = np.argsort(appear_probs)[::-1][:max_number]
+        predicted_numbers = []
+        for idx in top_indices:
+            num = int(idx) + 1
+            if num <= max_number and num not in predicted_numbers:
+                predicted_numbers.append(num)
+                if len(predicted_numbers) == 6:
+                    break
         
         # Fill if needed
         if len(predicted_numbers) < 6:
             sorted_numbers = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
             for num, _ in sorted_numbers:
-                if num not in predicted_numbers and num <= max_number:
-                    predicted_numbers.append(num)
+                if int(num) not in predicted_numbers and num <= max_number:
+                    predicted_numbers.append(int(num))
                     if len(predicted_numbers) == 6:
                         break
         
-        return sorted(predicted_numbers[:6])
+        return [int(num) for num in sorted(predicted_numbers[:6])]
 

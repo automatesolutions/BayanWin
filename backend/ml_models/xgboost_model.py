@@ -12,6 +12,7 @@ class XGBoostModel:
     def __init__(self):
         self.model = None
         self.is_trained = False
+        self.trained_game_type = None  # Track which game type this model was trained on
         
     def train(self, game_type: str):
         """
@@ -41,6 +42,10 @@ class XGBoostModel:
         X_list = []
         y_list = []
         
+        # Calculate frequency ONCE before the loop (not inside!)
+        frequency = calculate_frequency(game_type)
+        freq_features = [frequency.get(i, 0) for i in range(1, max_number + 1)]
+        
         for idx in range(len(df)):
             row = df.iloc[idx]
             numbers = [row['number_1'], row['number_2'], row['number_3'],
@@ -56,8 +61,7 @@ class XGBoostModel:
                                           prev_row['number_5'], prev_row['number_6']])
                     
                     # Feature vector: frequency stats + previous numbers
-                    frequency = calculate_frequency(game_type, db)
-                    freq_features = [frequency.get(i, 0) for i in range(1, max_number + 1)]
+                    # (frequency calculated once above, not in loop)
                     
                     # Combine features
                     X = np.concatenate([
@@ -88,6 +92,7 @@ class XGBoostModel:
         self.model = xgb.XGBClassifier(**params)
         self.model.fit(X_train, y_train)
         self.is_trained = True
+        self.trained_game_type = game_type  # Remember which game type we trained on
     
     def predict(self, game_type: str) -> List[int]:
         """
@@ -99,7 +104,8 @@ class XGBoostModel:
         Returns:
             List of 6 predicted numbers
         """
-        if not self.is_trained:
+        # Retrain if not trained or if game type changed (different max_number = different feature size)
+        if not self.is_trained or self.trained_game_type != game_type:
             self.train(game_type)
         
         max_number = Config.GAMES[game_type]['max_number']
@@ -111,7 +117,7 @@ class XGBoostModel:
             # No historical data, use frequency-based prediction
             frequency = calculate_frequency(game_type)
             sorted_numbers = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
-            return [num for num, _ in sorted_numbers[:6]]
+            return [int(num) for num, _ in sorted_numbers[:6]]
         
         # Get frequency features
         frequency = calculate_frequency(game_type)
@@ -141,7 +147,7 @@ class XGBoostModel:
         
         # If we don't have 6, fill with high-frequency numbers
         if len(predicted_numbers) < 6:
-            frequency = calculate_frequency(game_type, db)
+            frequency = calculate_frequency(game_type)
             sorted_numbers = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
             for num, _ in sorted_numbers:
                 if num not in predicted_numbers and num <= max_number:
@@ -149,5 +155,5 @@ class XGBoostModel:
                     if len(predicted_numbers) == 6:
                         break
         
-        return sorted(predicted_numbers[:6])
+        return [int(num) for num in sorted(predicted_numbers[:6])]
 

@@ -1,4 +1,4 @@
-"""Anomaly Detection model using sum/product representation and Gaussian distribution."""
+"""Normal Distribution model using sum/product representation and Gaussian distribution to predict most probable patterns."""
 import numpy as np
 from sklearn.mixture import GaussianMixture
 from typing import List
@@ -7,7 +7,7 @@ from utils.data_processor import get_historical_data
 from config import Config
 
 class AnomalyDetectionModel:
-    """Anomaly Detection model for predicting lottery numbers."""
+    """Normal Distribution model for predicting lottery numbers based on highest probability patterns."""
     
     def __init__(self):
         self.gmm = None
@@ -20,10 +20,9 @@ class AnomalyDetectionModel:
         
         Args:
             game_type: Game type identifier
-            db: Database session
         """
         # Get historical data
-        df = get_historical_data(game_type, db)
+        df = get_historical_data(game_type)
         
         if df.empty or len(df) < 10:
             raise ValueError("Insufficient historical data for training")
@@ -56,11 +55,11 @@ class AnomalyDetectionModel:
     
     def predict(self, game_type: str) -> List[int]:
         """
-        Generate prediction for next draw using anomaly detection.
+        Generate prediction for next draw using Gaussian normal distribution.
+        Picks numbers with HIGHEST probability (most normal/typical patterns).
         
         Args:
             game_type: Game type identifier
-            db: Database session
             
         Returns:
             List of 6 predicted numbers
@@ -74,8 +73,7 @@ class AnomalyDetectionModel:
         # Generate candidate number sets
         candidates = []
         
-        # Sample from distribution and find anomalies
-        # Generate random candidate sets
+        # Generate random candidate sets and score them
         np.random.seed(None)
         
         for _ in range(1000):  # Generate many candidates
@@ -89,22 +87,21 @@ class AnomalyDetectionModel:
             product_val = np.prod(candidate)
             point = np.array([[sum_val, product_val]])
             
-            # Calculate probability density
+            # Calculate probability density (log likelihood)
+            # Higher score = higher probability = more normal/typical
             score = self.gmm.score_samples(point)[0]
-            mean_score = self.gmm.score_samples(self.gmm.means_)[0]
             
-            # Check if outside epsilon boundary (anomaly)
-            if score < mean_score - self.epsilon:
-                candidates.append((candidate, abs(score - mean_score)))
+            # Store ALL candidates with their probability scores
+            candidates.append((candidate, score))
         
         if candidates:
-            # Sort by anomaly score (most anomalous first)
+            # Sort by score (HIGHEST probability first - most normal patterns)
             candidates.sort(key=lambda x: x[1], reverse=True)
-            return candidates[0][0]
+            return [int(num) for num in candidates[0][0]]  # Return the MOST normal combination
         
         # Fallback: generate based on distribution mean
         # Get mean sum and product from historical data
-        df = get_historical_data(game_type, db)
+        df = get_historical_data(game_type)
         
         if not df.empty:
             sums = []
@@ -141,12 +138,12 @@ class AnomalyDetectionModel:
                     best_candidate = candidate
             
             if best_candidate:
-                return best_candidate
+                return [int(num) for num in best_candidate]
         
         # Final fallback: random selection
-        return sorted(np.random.choice(
+        return [int(num) for num in sorted(np.random.choice(
             range(1, max_number + 1),
             size=numbers_count,
             replace=False
-        ))
+        ))]
 

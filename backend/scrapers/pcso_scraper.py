@@ -6,10 +6,18 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 from datetime import datetime, timedelta, date
 from services.instantdb_client import instantdb
 from config import Config
 import time
+import traceback
+import logging
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class PCSOScraper:
     """Scraper for PCSO lottery results."""
@@ -17,16 +25,69 @@ class PCSOScraper:
     def __init__(self):
         self.base_url = Config.PCSO_URL
         self.timeout = Config.SCRAPING_TIMEOUT
+        self.max_retries = 3
         
     def setup_driver(self):
-        """Setup Selenium WebDriver."""
+        """Setup Selenium WebDriver with robust Windows-compatible options."""
         chrome_options = Options()
-        chrome_options.add_argument('--headless')
+        
+        # Essential options for stability
+        chrome_options.add_argument('--headless=new')  # New headless mode
         chrome_options.add_argument('--no-sandbox')
         chrome_options.add_argument('--disable-dev-shm-usage')
         chrome_options.add_argument('--disable-gpu')
-        driver = webdriver.Chrome(options=chrome_options)
-        return driver
+        
+        # Additional stability options for Windows
+        chrome_options.add_argument('--disable-software-rasterizer')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_argument('--disable-infobars')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--start-maximized')
+        
+        # Prevent crashes
+        chrome_options.add_argument('--disable-crash-reporter')
+        chrome_options.add_argument('--disable-in-process-stack-traces')
+        chrome_options.add_argument('--disable-logging')
+        chrome_options.add_argument('--disable-dev-tools')
+        chrome_options.add_argument('--log-level=3')
+        chrome_options.add_argument('--silent')
+        
+        # Use single process to avoid multi-process issues
+        chrome_options.add_argument('--single-process')
+        
+        # Memory management
+        chrome_options.add_argument('--disable-web-security')
+        chrome_options.add_argument('--allow-running-insecure-content')
+        chrome_options.add_argument('--disable-features=VizDisplayCompositor')
+        
+        # Set preferences
+        prefs = {
+            'profile.default_content_setting_values': {
+                'images': 2,  # Disable images for faster loading
+                'javascript': 1  # Enable JavaScript
+            },
+            'profile.managed_default_content_settings': {
+                'images': 2
+            }
+        }
+        chrome_options.add_experimental_option('prefs', prefs)
+        
+        # Exclude automation flags
+        chrome_options.add_experimental_option('excludeSwitches', ['enable-automation', 'enable-logging'])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        try:
+            # Use webdriver-manager to automatically handle ChromeDriver
+            service = Service(ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=chrome_options)
+            driver.set_page_load_timeout(self.timeout)
+            logger.info("ChromeDriver initialized successfully")
+            return driver
+        except Exception as e:
+            logger.error(f"Failed to initialize ChromeDriver: {e}")
+            logger.error(traceback.format_exc())
+            raise
     
     def scrape_game_results(self, game_type, driver=None, start_date=None, end_date=None):
         """
@@ -41,19 +102,54 @@ class PCSOScraper:
         Returns:
             List of result dictionaries
         """
-        close_driver = False
-        if driver is None:
-            driver = self.setup_driver()
-            close_driver = True
+        # Retry logic for handling crashes
+        for attempt in range(self.max_retries):
+            close_driver = False
+            local_driver = driver
+            
+            try:
+                if local_driver is None:
+                    local_driver = self.setup_driver()
+                    close_driver = True
+                
+                # Set default dates if not provided
+                if not start_date:
+                    start_date = datetime.now() - timedelta(days=30)
+                if not end_date:
+                    end_date = datetime.now()
+                
+                logger.info(f"Attempt {attempt + 1}/{self.max_retries}: Scraping {game_type}")
+                
+                results = self._scrape_with_driver(local_driver, game_type, start_date, end_date)
+                
+                logger.info(f"Successfully scraped {len(results)} results for {game_type}")
+                return results
+                
+            except Exception as e:
+                logger.error(f"Attempt {attempt + 1}/{self.max_retries} failed for {game_type}: {str(e)}")
+                logger.error(traceback.format_exc())
+                
+                if attempt < self.max_retries - 1:
+                    logger.info(f"Retrying in 3 seconds...")
+                    time.sleep(3)
+                else:
+                    logger.error(f"All {self.max_retries} attempts failed for {game_type}")
+                    raise
+                    
+            finally:
+                if close_driver and local_driver:
+                    try:
+                        local_driver.quit()
+                    except:
+                        pass
         
-        # Set default dates if not provided
-        if not start_date:
-            start_date = datetime.now() - timedelta(days=30)
-        if not end_date:
-            end_date = datetime.now()
-        
+        return []
+    
+    def _scrape_with_driver(self, driver, game_type, start_date, end_date):
+        """Internal method to perform the actual scraping."""
         try:
             driver.get(self.base_url)
+            logger.info(f"Navigated to {self.base_url}")
             
             # Wait for page to load - wait for form elements
             WebDriverWait(driver, self.timeout).until(
@@ -103,18 +199,20 @@ class PCSOScraper:
                     game_dropdown = Select(driver.find_element(By.ID, selector))
                     game_dropdown.select_by_visible_text(game_name)
                     game_selected = True
+                    logger.info(f"Selected game: {game_name}")
                     break
                 except:
                     try:
                         game_dropdown = Select(driver.find_element(By.NAME, selector))
                         game_dropdown.select_by_visible_text(game_name)
                         game_selected = True
+                        logger.info(f"Selected game: {game_name}")
                         break
                     except:
                         continue
             
             if not game_selected:
-                print(f"Warning: Could not find game dropdown, trying to search for all games")
+                logger.warning(f"Could not find game dropdown, trying to search for all games")
             
             # Click Search button - try multiple possible selectors
             search_clicked = False
@@ -125,12 +223,14 @@ class PCSOScraper:
                     search_button = driver.find_element(By.ID, selector)
                     search_button.click()
                     search_clicked = True
+                    logger.info("Search button clicked")
                     break
                 except:
                     try:
                         search_button = driver.find_element(By.NAME, selector)
                         search_button.click()
                         search_clicked = True
+                        logger.info("Search button clicked")
                         break
                     except:
                         try:
@@ -138,6 +238,7 @@ class PCSOScraper:
                             search_button = driver.find_element(By.XPATH, f"//input[@type='submit' and contains(@value, 'Search')]")
                             search_button.click()
                             search_clicked = True
+                            logger.info("Search button clicked")
                             break
                         except:
                             continue
@@ -160,11 +261,8 @@ class PCSOScraper:
             return results
             
         except Exception as e:
-            print(f"Error scraping {game_type}: {str(e)}")
+            logger.error(f"Error in _scrape_with_driver for {game_type}: {str(e)}")
             raise
-        finally:
-            if close_driver:
-                driver.quit()
     
     def _set_date_dropdowns(self, driver, date_obj, month_selectors, day_selectors, year_selectors):
         """Helper method to set date dropdowns."""
@@ -221,7 +319,7 @@ class PCSOScraper:
                     continue
         
         if not (month_set and day_set and year_set):
-            print(f"Warning: Could not set all date dropdowns for {date_obj}")
+            logger.warning(f"Could not set all date dropdowns for {date_obj}")
     
     def _parse_results(self, soup, game_type):
         """
@@ -263,7 +361,7 @@ class PCSOScraper:
                             break
         
         if not results_table:
-            print("Warning: Could not find results table")
+            logger.warning("Could not find results table")
             return results
         
         # Find all rows (skip header row)
@@ -306,7 +404,7 @@ class PCSOScraper:
                     try:
                         draw_date = datetime.strptime(draw_date_str, '%Y-%m-%d').date()
                     except ValueError:
-                        print(f"Could not parse date: {draw_date_str}")
+                        logger.warning(f"Could not parse date: {draw_date_str}")
                         continue
                 
                 # Parse winning numbers from combinations (format: "41-16-45-20-52-01")
@@ -319,7 +417,7 @@ class PCSOScraper:
                         num = int(num_text)
                         numbers.append(num)
                 except ValueError:
-                    print(f"Could not parse numbers from: {combinations}")
+                    logger.warning(f"Could not parse numbers from: {combinations}")
                     continue
                 
                 if len(numbers) != 6:
@@ -364,7 +462,7 @@ class PCSOScraper:
                 })
                 
             except Exception as e:
-                print(f"Error parsing row: {e}")
+                logger.error(f"Error parsing row: {e}")
                 continue
         
         return results
@@ -386,7 +484,8 @@ class PCSOScraper:
         if not end_date:
             end_date = datetime.now()
         
-        driver = self.setup_driver()
+        # Create a fresh driver for each scraping session
+        # Don't reuse driver to avoid crashes
         stats = {
             'total_new': 0,
             'total_duplicates': 0,
@@ -394,42 +493,41 @@ class PCSOScraper:
             'errors': []
         }
         
-        try:
-            game_types = ['ultra_lotto_6_58', 'grand_lotto_6_55', 'super_lotto_6_49', 
-                         'mega_lotto_6_45', 'lotto_6_42']
-            
-            for game_type in game_types:
-                try:
-                    print(f"Scraping {game_type}...")
-                    results = self.scrape_game_results(
-                        game_type, 
-                        driver, 
-                        start_date=start_date,
-                        end_date=end_date
-                    )
-                    
-                    print(f"Found {len(results)} results for {game_type}")
-                    
-                    new_count, dup_count = self._store_results(game_type, results)
-                    
-                    stats['total_new'] += new_count
-                    stats['total_duplicates'] += dup_count
-                    stats['games_updated'].append({
-                        'game': game_type,
-                        'new_records': new_count,
-                        'duplicates': dup_count
-                    })
-                    
-                    # Small delay between games to avoid overwhelming the server
-                    time.sleep(2)
-                    
-                except Exception as e:
-                    error_msg = f"Error scraping {game_type}: {str(e)}"
-                    print(error_msg)
-                    stats['errors'].append(error_msg)
+        game_types = ['ultra_lotto_6_58', 'grand_lotto_6_55', 'super_lotto_6_49', 
+                     'mega_lotto_6_45', 'lotto_6_42']
         
-        finally:
-            driver.quit()
+        for game_type in game_types:
+            try:
+                logger.info(f"Scraping {game_type}...")
+                
+                # Each game gets its own driver instance to prevent crashes
+                results = self.scrape_game_results(
+                    game_type, 
+                    driver=None,  # Force new driver for each game
+                    start_date=start_date,
+                    end_date=end_date
+                )
+                
+                logger.info(f"Found {len(results)} results for {game_type}")
+                
+                new_count, dup_count = self._store_results(game_type, results)
+                
+                stats['total_new'] += new_count
+                stats['total_duplicates'] += dup_count
+                stats['games_updated'].append({
+                    'game': game_type,
+                    'new_records': new_count,
+                    'duplicates': dup_count
+                })
+                
+                # Delay between games to avoid overwhelming the server and let resources clean up
+                time.sleep(5)
+                
+            except Exception as e:
+                error_msg = f"Error scraping {game_type}: {str(e)}"
+                logger.error(error_msg)
+                logger.error(traceback.format_exc())
+                stats['errors'].append(error_msg)
         
         return stats
     
@@ -501,7 +599,7 @@ class PCSOScraper:
                 existing_keys.add(key)  # Add to set to avoid duplicates in same batch
                 
             except Exception as e:
-                print(f"Error storing result: {e}")
+                logger.error(f"Error storing result: {e}")
                 continue
         
         return new_count, duplicate_count

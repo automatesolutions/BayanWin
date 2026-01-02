@@ -79,14 +79,14 @@ class MarkovChainModel:
             self.train(game_type)
         
         # Get latest state
-        df = get_historical_data(game_type, db, limit=1)
+        df = get_historical_data(game_type, limit=1)
         
         if df.empty or not self.states:
             # Fallback to frequency-based
             from utils.frequency_analysis import calculate_frequency
-            frequency = calculate_frequency(game_type, db)
+            frequency = calculate_frequency(game_type)
             sorted_numbers = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
-            return [num for num, _ in sorted_numbers[:6]]
+            return [int(num) for num, _ in sorted_numbers[:6]]
         
         latest_row = df.iloc[0]
         current_state = tuple(sorted([
@@ -100,7 +100,7 @@ class MarkovChainModel:
             if next_states:
                 # Get state with highest probability
                 most_likely_state = max(next_states.items(), key=lambda x: x[1])[0]
-                return list(most_likely_state)
+                return [int(num) for num in most_likely_state]
         
         # If no transition found, use most common state
         if self.states:
@@ -111,11 +111,11 @@ class MarkovChainModel:
             
             if state_freq:
                 most_common_state = max(state_freq.items(), key=lambda x: x[1])[0]
-                return list(most_common_state)
+                return [int(num) for num in most_common_state]
         
         # Final fallback
         from utils.frequency_analysis import calculate_frequency
-        frequency = calculate_frequency(game_type, db)
+        frequency = calculate_frequency(game_type)
         sorted_numbers = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
-        return [num for num, _ in sorted_numbers[:6]]
+        return [int(num) for num, _ in sorted_numbers[:6]]
 

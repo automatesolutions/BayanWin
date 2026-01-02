@@ -157,7 +157,66 @@ class InstantDBClient:
             raise
     
     def get_results(self, game_type: str, limit: int = 50, offset: int = 0, order_by: str = 'draw_date.desc') -> List[Dict]:
-        """Get lottery results from InstantDB using query format."""
+        """Get lottery results from InstantDB using Node.js Admin SDK with proper sorting."""
+        import subprocess
+        import json
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        entity_name = f"{game_type}_results"
+        
+        try:
+            # Use Node.js Admin SDK for querying with proper sorting
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(current_dir, '..', 'scripts', 'query_results.js')
+            script_path = os.path.normpath(script_path)
+            
+            if not os.path.exists(script_path):
+                logger.warning(f"Node.js query script not found at {script_path}, using REST API fallback")
+                # Fallback to old method
+                return self._get_results_rest_api(game_type, limit, offset, order_by)
+            
+            # Prepare query data
+            query_data = {
+                'game_type': game_type,
+                'limit': limit,
+                'offset': offset,
+                'order_by': order_by
+            }
+            
+            # Set environment variables
+            env = os.environ.copy()
+            from config import Config
+            env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
+            env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
+            
+            # Call Node.js script
+            result = subprocess.run(
+                ['node', script_path],
+                input=json.dumps(query_data),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                env=env,
+                cwd=os.path.dirname(script_path) or os.getcwd()
+            )
+            
+            if result.returncode == 0:
+                response = json.loads(result.stdout)
+                return response.get('results', [])
+            else:
+                error_msg = result.stderr or result.stdout
+                logger.error(f"Node.js query failed: {error_msg}")
+                # Fallback to REST API
+                return self._get_results_rest_api(game_type, limit, offset, order_by)
+                
+        except Exception as e:
+            logger.error(f"Query via Node.js failed: {e}, using REST API fallback")
+            return self._get_results_rest_api(game_type, limit, offset, order_by)
+    
+    def _get_results_rest_api(self, game_type: str, limit: int = 50, offset: int = 0, order_by: str = 'draw_date.desc') -> List[Dict]:
+        """Fallback method using REST API (may not support sorting properly)."""
         import logging
         logger = logging.getLogger(__name__)
         
@@ -241,28 +300,103 @@ class InstantDBClient:
     
     # Predictions Operations
     def create_prediction(self, game_type: str, prediction_data: Dict) -> Dict:
-        """Create a new prediction in InstantDB."""
+        """Create a new prediction in InstantDB using Admin SDK via Node.js bridge."""
+        import subprocess
+        import json
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
+        
         entity_name = f"{game_type}_predictions"
         
+        # Format data for InstantDB schema exactly as defined
         instantdb_data = {
             'target_draw_date': prediction_data.get('target_draw_date'),
             'model_type': prediction_data.get('model_type'),
-            'predicted_number_1': prediction_data.get('predicted_number_1'),
-            'predicted_number_2': prediction_data.get('predicted_number_2'),
-            'predicted_number_3': prediction_data.get('predicted_number_3'),
-            'predicted_number_4': prediction_data.get('predicted_number_4'),
-            'predicted_number_5': prediction_data.get('predicted_number_5'),
-            'predicted_number_6': prediction_data.get('predicted_number_6'),
-            'previous_prediction_1': json.dumps(prediction_data.get('previous_prediction_1')) if prediction_data.get('previous_prediction_1') else None,
-            'previous_prediction_2': json.dumps(prediction_data.get('previous_prediction_2')) if prediction_data.get('previous_prediction_2') else None,
-            'previous_prediction_3': json.dumps(prediction_data.get('previous_prediction_3')) if prediction_data.get('previous_prediction_3') else None,
-            'previous_prediction_4': json.dumps(prediction_data.get('previous_prediction_4')) if prediction_data.get('previous_prediction_4') else None,
-            'previous_prediction_5': json.dumps(prediction_data.get('previous_prediction_5')) if prediction_data.get('previous_prediction_5') else None,
-            'result_id': prediction_data.get('result_id'),
-            'created_at': datetime.now().isoformat() if not prediction_data.get('created_at') else prediction_data.get('created_at')
+            'predicted_number_1': int(prediction_data.get('predicted_number_1')) if prediction_data.get('predicted_number_1') is not None else None,
+            'predicted_number_2': int(prediction_data.get('predicted_number_2')) if prediction_data.get('predicted_number_2') is not None else None,
+            'predicted_number_3': int(prediction_data.get('predicted_number_3')) if prediction_data.get('predicted_number_3') is not None else None,
+            'predicted_number_4': int(prediction_data.get('predicted_number_4')) if prediction_data.get('predicted_number_4') is not None else None,
+            'predicted_number_5': int(prediction_data.get('predicted_number_5')) if prediction_data.get('predicted_number_5') is not None else None,
+            'predicted_number_6': int(prediction_data.get('predicted_number_6')) if prediction_data.get('predicted_number_6') is not None else None,
+            'created_at': prediction_data.get('created_at') or datetime.now().isoformat(),
         }
         
-        return self._make_request('POST', f'entities/{entity_name}', instantdb_data)
+        # Add optional fields only if they exist
+        if prediction_data.get('previous_prediction_1') is not None:
+            instantdb_data['previous_prediction_1'] = prediction_data.get('previous_prediction_1')
+        if prediction_data.get('previous_prediction_2') is not None:
+            instantdb_data['previous_prediction_2'] = prediction_data.get('previous_prediction_2')
+        if prediction_data.get('previous_prediction_3') is not None:
+            instantdb_data['previous_prediction_3'] = prediction_data.get('previous_prediction_3')
+        if prediction_data.get('previous_prediction_4') is not None:
+            instantdb_data['previous_prediction_4'] = prediction_data.get('previous_prediction_4')
+        if prediction_data.get('previous_prediction_5') is not None:
+            instantdb_data['previous_prediction_5'] = prediction_data.get('previous_prediction_5')
+        if prediction_data.get('result_id') is not None:
+            instantdb_data['result_id'] = prediction_data.get('result_id')
+        
+        # Use Node.js Admin SDK bridge (InstantDB REST API doesn't support writes reliably)
+        try:
+            # Find the Node.js script
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(current_dir, '..', 'scripts', 'save_predictions.js')
+            script_path = os.path.normpath(script_path)
+            
+            if not os.path.exists(script_path):
+                # Try alternative path
+                alt_path = os.path.join(os.path.dirname(current_dir), 'scripts', 'save_predictions.js')
+                if os.path.exists(alt_path):
+                    script_path = alt_path
+                else:
+                    raise FileNotFoundError(f"Node.js script not found at {script_path}")
+            
+            # Prepare data for Node.js script
+            input_data = {
+                'game_type': game_type,
+                'prediction': instantdb_data
+            }
+            
+            # Set environment variables for Node.js script
+            env = os.environ.copy()
+            env['INSTANTDB_APP_ID'] = self.app_id
+            env['INSTANTDB_ADMIN_TOKEN'] = self.admin_token
+            
+            # Call Node.js script
+            result = subprocess.run(
+                ['node', script_path],
+                input=json.dumps(input_data),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                env=env,
+                cwd=os.path.dirname(script_path) or os.getcwd()
+            )
+            
+            if result.returncode == 0:
+                try:
+                    response = json.loads(result.stdout)
+                    logger.debug(f"Admin SDK bridge success: {response}")
+                    return response
+                except json.JSONDecodeError:
+                    # If stdout is not JSON, check stderr for info
+                    logger.debug(f"Admin SDK output: {result.stdout}")
+                    return {'success': True, 'id': 'unknown'}
+            else:
+                error_msg = result.stderr or result.stdout
+                logger.error(f"Node.js script failed: {error_msg}")
+                raise Exception(f"Admin SDK bridge failed: {error_msg}")
+                
+        except FileNotFoundError as e:
+            if 'node' in str(e).lower() or 'not found' in str(e).lower():
+                logger.error("Node.js not found. Please install Node.js to use InstantDB Admin SDK.")
+                raise Exception("Node.js is required for InstantDB writes. Please install Node.js from https://nodejs.org/")
+            else:
+                logger.error(f"Script file not found: {e}")
+                raise Exception(f"Node.js script not found: {e}")
+        except Exception as e:
+            logger.error(f"Admin SDK bridge error: {e}")
+            raise
     
     def get_predictions(self, game_type: str, limit: int = 50, offset: int = 0) -> List[Dict]:
         """Get predictions from InstantDB."""

@@ -24,6 +24,7 @@ class DRLAgent:
         self.epsilon_min = Config.DRL_PARAMS['epsilon_min']
         self.gamma = Config.DRL_PARAMS['gamma']
         self.is_trained = False
+        self.trained_game_type = None  # Track which game type this model was trained on
         
     def _build_model(self, state_size: int, action_size: int):
         """Build DQN model."""
@@ -118,7 +119,7 @@ class DRLAgent:
             replace=False
         ))
         
-        return numbers
+        return [int(num) for num in numbers]
     
     def _calculate_reward(self, predicted: List[int], actual: List[int], 
                          game_type: str) -> float:
@@ -178,13 +179,13 @@ class DRLAgent:
                 reward_b = cluster_density * 20
         
         # Feedback Loop C: Frequency Analysis
-        hot_numbers = get_hot_numbers(game_type, db, top_n=10)
+        hot_numbers = get_hot_numbers(game_type, top_n=10)
         hot_set = set([num for num, _ in hot_numbers])
         
-        cold_numbers = get_cold_numbers(game_type, db, bottom_n=10)
+        cold_numbers = get_cold_numbers(game_type, bottom_n=10)
         cold_set = set([num for num, _ in cold_numbers])
         
-        overdue_numbers = get_overdue_numbers(game_type, db)[:10]
+        overdue_numbers = get_overdue_numbers(game_type)[:10]
         overdue_set = set([num for num, _ in overdue_numbers])
         
         # Reward alignment with frequency-weighted sets
@@ -225,14 +226,20 @@ class DRLAgent:
         
         # Training loop
         for episode in range(episodes):
-            state = self._get_state(game_type, db)
-            state = state.reshape(1, -1)
+            # Print progress every episode for small episode counts
+            if episodes <= 5:
+                print(f"      DRL training: {episode + 1}/{episodes} episodes...")
+            elif episode % 2 == 0 and episode > 0:
+                print(f"      DRL training: {episode}/{episodes} episodes...")
+            
+            state = self._get_state(game_type)
+            state_reshaped = state.reshape(1, -1)  # For prediction
             
             # Epsilon-greedy action selection
             if np.random.random() <= self.epsilon:
                 action = np.random.randint(0, action_size)
             else:
-                q_values = self.model.predict(state, verbose=0)
+                q_values = self.model.predict(state_reshaped, verbose=0)
                 action = np.argmax(q_values[0])
             
             # Get predicted numbers
@@ -248,10 +255,11 @@ class DRLAgent:
                 ]
             
             # Calculate reward
-            reward = self._calculate_reward(predicted, actual, game_type, db)
+            reward = self._calculate_reward(predicted, actual, game_type)
             
-            # Store in memory
-            self.memory.append((state, action, reward))
+            # Store in memory - flatten state to 1D for consistent batch creation
+            state_flattened = state.flatten()
+            self.memory.append((state_flattened, action, reward))
             
             # Update epsilon
             if self.epsilon > self.epsilon_min:
@@ -260,7 +268,8 @@ class DRLAgent:
             # Train on batch if memory is sufficient
             if len(self.memory) >= 32:
                 batch = np.random.choice(len(self.memory), size=min(32, len(self.memory)), replace=False)
-                states_batch = np.array([self.memory[i][0].flatten() for i in batch])
+                # States are already flattened when stored, but ensure consistent shape
+                states_batch = np.array([self.memory[i][0] for i in batch])
                 actions_batch = np.array([self.memory[i][1] for i in batch])
                 rewards_batch = np.array([self.memory[i][2] for i in batch])
                 
@@ -275,6 +284,7 @@ class DRLAgent:
                 self.target_model.set_weights(self.model.get_weights())
         
         self.is_trained = True
+        self.trained_game_type = game_type  # Remember which game type we trained on
     
     def predict(self, game_type: str) -> List[int]:
         """
@@ -287,8 +297,9 @@ class DRLAgent:
         Returns:
             List of 6 predicted numbers
         """
-        if not self.is_trained:
-            self.train(game_type, episodes=50)
+        # Retrain if not trained or if game type changed (different max_number = different state size)
+        if not self.is_trained or self.trained_game_type != game_type:
+            self.train(game_type, episodes=5)  # Reduced to 5 episodes for faster predictions
         
         state = self._get_state(game_type)
         state = state.reshape(1, -1)

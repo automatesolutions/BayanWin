@@ -58,6 +58,10 @@ export const getStatistics = (gameType) => {
   return api.get(`/api/stats/${gameType}`);
 };
 
+export const getGaussianDistribution = (gameType) => {
+  return api.get(`/api/stats/${gameType}/gaussian`);
+};
+
 export const getPredictionAccuracy = (gameType, limit = 100) => {
   return api.get(`/api/predictions/${gameType}/accuracy`, {
     params: { limit }
