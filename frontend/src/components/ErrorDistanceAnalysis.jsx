@@ -1,17 +1,66 @@
 import React, { useState, useEffect } from 'react';
-import { getPredictionAccuracy, getGaussianDistribution } from '../services/api';
+import { getPredictionAccuracy, getGaussianDistribution, autoCalculateAccuracy } from '../services/api';
 import { LineChart, Line, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
 
 const ErrorDistanceAnalysis = ({ gameType }) => {
   const [accuracyData, setAccuracyData] = useState([]);
   const [gaussianData, setGaussianData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [calculating, setCalculating] = useState(false);
+  const [autoCalculating, setAutoCalculating] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
   const [activeTab, setActiveTab] = useState('error'); // 'error' or 'gaussian'
 
   useEffect(() => {
     if (gameType) {
       fetchAccuracy();
       fetchGaussianData();
+      
+      // Automatically calculate accuracy if no data exists
+      const autoCalculateTimer = setTimeout(async () => {
+        try {
+          const response = await getPredictionAccuracy(gameType, 50);
+          if (!response.data.accuracy_records || response.data.accuracy_records.length === 0) {
+            // No accuracy data, try to auto-calculate
+            setAutoCalculating(true);
+            setStatusMessage('Checking for predictions and results...');
+            
+            try {
+              setStatusMessage('Matching predictions to results...');
+              const calcResponse = await autoCalculateAccuracy(gameType);
+              
+              if (calcResponse.data.success && calcResponse.data.total_calculated > 0) {
+                setStatusMessage(`✅ Calculated ${calcResponse.data.total_calculated} accuracy records!`);
+                // Refresh after calculation
+                setTimeout(() => {
+                  fetchAccuracy();
+                  setAutoCalculating(false);
+                  setStatusMessage('');
+                }, 1500);
+              } else {
+                setStatusMessage(calcResponse.data.message || 'No matches found. Make sure you have predictions and results with matching dates.');
+                setAutoCalculating(false);
+                // Still refresh to check
+                setTimeout(() => fetchAccuracy(), 1000);
+              }
+            } catch (error) {
+              setStatusMessage(`⚠️ ${error.response?.data?.detail || error.message || 'Calculation failed'}`);
+              setAutoCalculating(false);
+              console.error('Auto-calculation failed:', error);
+            }
+          } else {
+            // Data exists, clear any status
+            setStatusMessage('');
+            setAutoCalculating(false);
+          }
+        } catch (error) {
+          setStatusMessage('Error checking accuracy data');
+          setAutoCalculating(false);
+          console.error('Error checking accuracy data:', error);
+        }
+      }, 1500); // Wait 1.5 seconds after component loads
+      
+      return () => clearTimeout(autoCalculateTimer);
     }
   }, [gameType]);
 
@@ -24,6 +73,34 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
       console.error('Error fetching accuracy data:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleAutoCalculate = async () => {
+    setCalculating(true);
+    try {
+      const response = await autoCalculateAccuracy(gameType);
+      console.log('Auto-calculate result:', response.data);
+      
+      // Refresh accuracy data after calculation
+      await fetchAccuracy();
+      
+      // Show appropriate message
+      if (response.data.success) {
+        if (response.data.total_calculated > 0) {
+          alert(`✅ Successfully calculated ${response.data.total_calculated} accuracy records!`);
+        } else {
+          alert(`ℹ️ ${response.data.message || 'No new accuracy records calculated. All predictions may already be matched or dates do not match.'}`);
+        }
+      } else {
+        alert(`⚠️ ${response.data.message || 'Calculation completed but no records were created.'}`);
+      }
+    } catch (error) {
+      console.error('Error auto-calculating accuracy:', error);
+      const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message;
+      alert('❌ Failed to calculate accuracy: ' + errorMsg);
+    } finally {
+      setCalculating(false);
     }
   };
 
@@ -188,7 +265,63 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
       {activeTab === 'error' && (
         <>
           {accuracyData.length === 0 ? (
-            <p className="text-silver-300">No accuracy data available. Generate predictions first.</p>
+            <div className="space-y-4">
+              <div className="bg-charcoal-700/50 rounded-lg p-4 border border-silver-600/30">
+                {autoCalculating ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3">
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-electric-500"></div>
+                      <p className="text-electric-400 font-semibold">Calculating accuracy automatically...</p>
+                    </div>
+                    {statusMessage && (
+                      <p className="text-sm text-silver-300 ml-8">{statusMessage}</p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <p className="text-silver-300 mb-2 font-semibold">No accuracy data available.</p>
+                    {statusMessage ? (
+                      <div className="space-y-2">
+                        <p className="text-sm text-silver-400">{statusMessage}</p>
+                        <p className="text-xs text-silver-500 mt-2">
+                          The system matches predictions to results where the <span className="text-electric-400">target_draw_date</span> matches the <span className="text-electric-400">draw_date</span>.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-silver-400 mb-3">
+                          The system automatically calculates accuracy when:
+                        </p>
+                        <ul className="list-disc list-inside text-sm text-silver-400 space-y-1 mb-3 ml-2">
+                          <li>You generate predictions</li>
+                          <li>You scrape results</li>
+                          <li>This page loads</li>
+                        </ul>
+                        <p className="text-xs text-silver-500 mt-3">
+                          <span className="text-electric-400">How it works:</span> Predictions with a <code className="bg-charcoal-800 px-1 rounded">target_draw_date</code> are matched to results with the same <code className="bg-charcoal-800 px-1 rounded">draw_date</code>, then error distance is calculated.
+                        </p>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+              {!autoCalculating && (
+                <button
+                  onClick={handleAutoCalculate}
+                  disabled={calculating}
+                  className="px-4 py-2 bg-charcoal-700 hover:bg-charcoal-600 text-silver-300 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border border-silver-600/30"
+                >
+                  {calculating ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-silver-300"></div>
+                      Calculating...
+                    </>
+                  ) : (
+                    '🔄 Calculate Now'
+                  )}
+                </button>
+              )}
+            </div>
           ) : (
             <div className="space-y-6">
               <div>

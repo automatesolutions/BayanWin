@@ -11,6 +11,9 @@ from utils.data_processor import get_historical_data
 from utils.frequency_analysis import get_hot_numbers, get_cold_numbers, get_overdue_numbers
 from utils.error_distance_calculator import calculate_all_metrics
 from config import Config
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DRLAgent:
     """Deep Reinforcement Learning agent for lottery prediction."""
@@ -329,4 +332,108 @@ class DRLAgent:
         predicted = self._action_to_numbers(action, game_type)
         
         return predicted
+    
+    def learn_from_accuracy_records(self, game_type: str, accuracy_records: List[Dict], instantdb_client=None):
+        """
+        Learn from stored prediction accuracy records.
+        This creates a continuous learning loop using past predictions.
+        
+        Args:
+            game_type: Game type identifier
+            accuracy_records: List of accuracy records from prediction_accuracy table
+            instantdb_client: InstantDB client instance (optional, will import if not provided)
+        """
+        if not accuracy_records or len(accuracy_records) < 5:
+            return  # Need minimum data to learn
+        
+        # Import instantdb if not provided
+        if instantdb_client is None:
+            from services.instantdb_client import instantdb
+            instantdb_client = instantdb
+        
+        try:
+            # Get predictions and results for these accuracy records
+            predictions = instantdb_client.get_predictions(game_type, limit=1000)
+            results = instantdb_client.get_results(game_type, limit=1000)
+            
+            # Filter for DRL predictions only
+            drl_predictions = {p.get('id'): p for p in predictions if p.get('model_type') == 'DRL'}
+            
+            # Build training data from accuracy records (only for DRL predictions)
+            learning_data = []
+            for acc_record in accuracy_records[-50:]:  # Use last 50 records
+                prediction_id = acc_record.get('prediction_id')
+                
+                # Only learn from DRL predictions
+                if prediction_id not in drl_predictions:
+                    continue
+                
+                prediction = drl_predictions[prediction_id]
+                result_id = acc_record.get('result_id')
+                
+                # Find matching result
+                result = next((r for r in results if r.get('id') == result_id), None)
+                
+                if not result:
+                    continue
+                
+                predicted = [
+                    prediction.get('predicted_number_1'),
+                    prediction.get('predicted_number_2'),
+                    prediction.get('predicted_number_3'),
+                    prediction.get('predicted_number_4'),
+                    prediction.get('predicted_number_5'),
+                    prediction.get('predicted_number_6')
+                ]
+                
+                actual = [
+                    result.get('number_1'), result.get('number_2'),
+                    result.get('number_3'), result.get('number_4'),
+                    result.get('number_5'), result.get('number_6')
+                ]
+                
+                # Get current state (approximation - in production, you'd store state with prediction)
+                state = self._get_state(game_type)
+                state_1d = np.array(state).flatten()
+                
+                # Calculate reward from stored accuracy
+                reward = self._calculate_reward(predicted, actual, game_type)
+                
+                # Store in memory for training
+                learning_data.append((state_1d.astype(np.float32), reward))
+            
+            if len(learning_data) < 5:
+                return  # Not enough data
+            
+            # Ensure model is built
+            if self.model is None:
+                max_number = Config.GAMES[game_type]['max_number']
+                state_size = max_number * 4
+                action_size = 1000
+                self.model = self._build_model(state_size, action_size)
+                self.target_model = self._build_model(state_size, action_size)
+                self.target_model.set_weights(self.model.get_weights())
+            
+            # Train on accumulated learning data
+            # Use a simplified training approach: update Q-values based on rewards
+            states_batch = np.stack([data[0] for data in learning_data])
+            rewards_batch = np.array([data[1] for data in learning_data])
+            
+            # Get current Q-values
+            q_values = self.model.predict(states_batch, verbose=0)
+            
+            # Update Q-values: use reward as target for best action (simplified approach)
+            # In a full implementation, you'd need to store actions with predictions
+            best_actions = np.argmax(q_values, axis=1)
+            q_values[range(len(learning_data)), best_actions] = rewards_batch
+            
+            # Fine-tune model with new data
+            self.model.fit(states_batch, q_values, epochs=1, verbose=0, batch_size=min(16, len(learning_data)))
+            
+            logger.info(f"DRL agent updated with {len(learning_data)} accuracy records for {game_type}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to learn from accuracy records: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
 

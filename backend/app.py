@@ -55,6 +55,9 @@ class CalculateAccuracyRequest(BaseModel):
     result_id: str  # Changed to string for InstantDB IDs
     game_type: str
 
+class AutoCalculateAccuracyRequest(BaseModel):
+    game_type: Optional[str] = None
+
 @app.get("/api/games")
 async def get_games():
     """List available games."""
@@ -109,6 +112,240 @@ async def get_results(
         'page': page,
         'limit': limit
     }
+
+async def auto_calculate_accuracy_for_new_results(game_type: str = None):
+    """
+    Automatically match predictions to results and calculate accuracy.
+    This runs after scraping to populate the Error Distance Analysis dashboard.
+    """
+    games_to_process = [game_type] if game_type else Config.GAMES.keys()
+    
+    total_calculated = 0
+    
+    for game in games_to_process:
+        try:
+            # Get all results (no date restriction - match all available results)
+            results = instantdb.get_results(game, limit=1000)
+            valid_results = []
+            
+            for r in results:
+                draw_date = r.get('draw_date')
+                if not draw_date:
+                    continue
+                
+                # Validate that result has all required numbers
+                if not all(r.get(f'number_{i}') for i in range(1, 7)):
+                    continue
+                
+                valid_results.append(r)
+            
+            if not valid_results:
+                logger.info(f"No valid results found for {game}")
+                continue
+            
+            logger.info(f"Found {len(valid_results)} valid results for {game}")
+            
+            # Get predictions without accuracy records
+            predictions = instantdb.get_predictions(game, limit=1000)
+            logger.info(f"Found {len(predictions)} predictions for {game}")
+            
+            # Get existing accuracy records to avoid duplicates
+            existing_accuracy = instantdb.get_prediction_accuracy(game)
+            existing_pairs = set()
+            for acc in existing_accuracy:
+                pred_id = acc.get('prediction_id')
+                res_id = acc.get('result_id')
+                if pred_id and res_id:
+                    existing_pairs.add((str(pred_id), str(res_id)))
+            
+            logger.info(f"Found {len(existing_pairs)} existing accuracy records for {game}")
+            calculated_count = 0
+            
+            for result in valid_results:
+                result_date_str = result.get('draw_date')
+                if not result_date_str:
+                    continue
+                
+                # Extract date part
+                result_date = result_date_str.split('T')[0] if 'T' in result_date_str else result_date_str
+                
+                # Find predictions that match this result's draw date
+                matching_predictions = []
+                for p in predictions:
+                    target_date = p.get('target_draw_date')
+                    if not target_date:
+                        continue
+                    
+                    # Extract date part
+                    pred_date = target_date.split('T')[0] if 'T' in target_date else target_date
+                    
+                    # Normalize dates for comparison (handle different formats)
+                    try:
+                        # Try to parse and compare dates
+                        pred_date_obj = datetime.strptime(pred_date, '%Y-%m-%d').date() if len(pred_date) == 10 else None
+                        result_date_obj = datetime.strptime(result_date, '%Y-%m-%d').date() if len(result_date) == 10 else None
+                        
+                        if pred_date_obj and result_date_obj and pred_date_obj == result_date_obj:
+                            matching_predictions.append(p)
+                        elif pred_date == result_date:  # Fallback to string comparison
+                            matching_predictions.append(p)
+                    except:
+                        # Fallback to string comparison
+                        if pred_date == result_date:
+                            matching_predictions.append(p)
+                
+                for prediction in matching_predictions:
+                    pred_id = str(prediction.get('id'))
+                    res_id = str(result.get('id'))
+                    
+                    # Check if this pair already has accuracy calculated
+                    if (pred_id, res_id) in existing_pairs:
+                        continue
+                    
+                    # Calculate accuracy automatically
+                    try:
+                        predicted = [
+                            prediction.get('predicted_number_1'),
+                            prediction.get('predicted_number_2'),
+                            prediction.get('predicted_number_3'),
+                            prediction.get('predicted_number_4'),
+                            prediction.get('predicted_number_5'),
+                            prediction.get('predicted_number_6')
+                        ]
+                        actual = [
+                            result.get('number_1'), result.get('number_2'),
+                            result.get('number_3'), result.get('number_4'),
+                            result.get('number_5'), result.get('number_6')
+                        ]
+                        
+                        # Validate numbers
+                        if not all(isinstance(n, (int, float)) and n > 0 for n in predicted + actual):
+                            continue
+                        
+                        metrics = calculate_all_metrics(predicted, actual)
+                        
+                        accuracy_data = {
+                            'prediction_id': pred_id,
+                            'result_id': res_id,
+                            'error_distance': metrics.get('error_distance'),
+                            'numbers_matched': metrics.get('numbers_matched'),
+                            'distance_metrics': metrics,
+                            'calculated_at': datetime.now().isoformat()
+                        }
+                        
+                        instantdb.create_prediction_accuracy(game, accuracy_data)
+                        existing_pairs.add((pred_id, res_id))
+                        calculated_count += 1
+                        total_calculated += 1
+                        
+                        logger.info(f"Auto-calculated accuracy for {game} prediction {pred_id} vs result {res_id}")
+                    except Exception as e:
+                        logger.warning(f"Failed to auto-calculate accuracy for {game} prediction {pred_id} vs result {res_id}: {e}")
+                        import traceback
+                        logger.debug(traceback.format_exc())
+                        continue
+            
+            if calculated_count > 0:
+                logger.info(f"Auto-calculated {calculated_count} accuracy records for {game}")
+                
+        except Exception as e:
+            logger.error(f"Error in auto_calculate_accuracy_for_new_results for {game}: {e}")
+            import traceback
+            logger.error(traceback.format_exc())
+            # Continue processing other games even if one fails
+            continue
+    
+    logger.info(f"Auto-calculation completed. Total calculated: {total_calculated}")
+    return total_calculated
+
+@app.get("/api/accuracy/diagnostics/{game_type}")
+async def get_accuracy_diagnostics(game_type: str = Path(...)):
+    """
+    Get diagnostic information about predictions, results, and accuracy records.
+    Helps debug why accuracy calculation might not be working.
+    """
+    if game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    
+    try:
+        results = instantdb.get_results(game_type, limit=1000)
+        predictions = instantdb.get_predictions(game_type, limit=1000)
+        accuracy_records = instantdb.get_prediction_accuracy(game_type)
+        
+        # Sample some dates for debugging
+        sample_result_dates = [r.get('draw_date') for r in results[:5] if r.get('draw_date')]
+        sample_prediction_dates = [p.get('target_draw_date') for p in predictions[:5] if p.get('target_draw_date')]
+        
+        return {
+            'game_type': game_type,
+            'total_results': len(results),
+            'total_predictions': len(predictions),
+            'total_accuracy_records': len(accuracy_records),
+            'sample_result_dates': sample_result_dates,
+            'sample_prediction_dates': sample_prediction_dates,
+            'has_valid_results': any(all(r.get(f'number_{i}') for i in range(1, 7)) for r in results),
+            'has_valid_predictions': any(all(p.get(f'predicted_number_{i}') for i in range(1, 7)) for p in predictions)
+        }
+    except Exception as e:
+        logger.error(f"Error in diagnostics: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/accuracy/auto-calculate")
+async def trigger_auto_calculate_accuracy(
+    request: AutoCalculateAccuracyRequest = Body(...)
+):
+    """
+    Manually trigger auto-calculation of accuracy for matching predictions and results.
+    This can be called to populate the Error Distance Analysis dashboard.
+    """
+    try:
+        game_type = request.game_type
+        logger.info(f"Manual trigger: Auto-calculating accuracy for {game_type or 'all games'}")
+        
+        # First, get diagnostics
+        if game_type:
+            results = instantdb.get_results(game_type, limit=1000)
+            predictions = instantdb.get_predictions(game_type, limit=1000)
+            
+            if len(results) == 0:
+                return {
+                    'success': False,
+                    'total_calculated': 0,
+                    'message': f'No results found for {game_type}. Please scrape results first.',
+                    'diagnostics': {
+                        'results_count': 0,
+                        'predictions_count': len(predictions)
+                    }
+                }
+            
+            if len(predictions) == 0:
+                return {
+                    'success': False,
+                    'total_calculated': 0,
+                    'message': f'No predictions found for {game_type}. Please generate predictions first.',
+                    'diagnostics': {
+                        'results_count': len(results),
+                        'predictions_count': 0
+                    }
+                }
+        
+        total_calculated = await auto_calculate_accuracy_for_new_results(game_type)
+        
+        return {
+            'success': True,
+            'total_calculated': total_calculated,
+            'message': f'Successfully calculated {total_calculated} accuracy records' if total_calculated > 0 else 'No new accuracy records calculated. All predictions may already be matched or dates do not match.'
+        }
+    except Exception as e:
+        logger.error(f"Error in manual auto-calculate: {e}")
+        import traceback
+        error_trace = traceback.format_exc()
+        logger.error(error_trace)
+        # Return more detailed error message
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Failed to calculate accuracy: {str(e)}. Check server logs for details."
+        )
 
 @app.post("/api/scrape")
 async def scrape_data(request: ScrapeRequest):
@@ -201,6 +438,29 @@ async def scrape_data(request: ScrapeRequest):
         else:
             logger.info(f"✅ Successfully added {total_added} new results to InstantDB")
         
+        # Auto-calculate accuracy for new results (non-blocking)
+        if total_added > 0:
+            try:
+                accuracy_count = await auto_calculate_accuracy_for_new_results(request.game_type)
+                if accuracy_count > 0:
+                    logger.info(f"Auto-calculated {accuracy_count} accuracy records")
+                    
+                    # Trigger DRL learning from newly calculated accuracy records
+                    try:
+                        if request.game_type:
+                            accuracy_records = instantdb.get_prediction_accuracy(request.game_type)
+                            predictions_all = instantdb.get_predictions(request.game_type, limit=1000)
+                            drl_prediction_ids = {p.get('id') for p in predictions_all if p.get('model_type') == 'DRL'}
+                            drl_accuracy = [acc for acc in accuracy_records if acc.get('prediction_id') in drl_prediction_ids]
+                            
+                            if len(drl_accuracy) >= 5:
+                                drl_agent.learn_from_accuracy_records(request.game_type, drl_accuracy, instantdb)
+                                logger.info(f"DRL agent updated after auto-calculating accuracy for {request.game_type}")
+                    except Exception as e:
+                        logger.warning(f"Failed to update DRL after auto-calculate (non-critical): {e}")
+            except Exception as e:
+                logger.warning(f"Auto-calculate accuracy failed (non-critical): {e}")
+        
         return response
     except HTTPException:
         raise
@@ -215,7 +475,7 @@ async def scrape_data(request: ScrapeRequest):
         )
 
 @app.post("/api/predict/{game_type}")
-def generate_predictions(game_type: str = Path(..., description="Game type identifier")):
+async def generate_predictions(game_type: str = Path(..., description="Game type identifier")):
     """Get predictions from all 5 models."""
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
@@ -289,9 +549,9 @@ def generate_predictions(game_type: str = Path(..., description="Game type ident
                 while len(prev_preds) < 5:
                     prev_preds.append(None)
                 
-                # Store prediction in InstantDB
-                print(f"   💾 Saving {model_name} prediction to database...")
-                logger.info(f"   💾 Saving {model_name} prediction to database...")
+                # Store prediction in InstantDB (creates NEW record, does NOT replace old ones)
+                print(f"   💾 Creating NEW {model_name} prediction in database...")
+                logger.info(f"   💾 Creating NEW {model_name} prediction in database (target_date: {target_draw_date})...")
                 prediction_data = {
                     'target_draw_date': target_draw_date,
                     'model_type': model_name,
@@ -309,10 +569,12 @@ def generate_predictions(game_type: str = Path(..., description="Game type ident
                     'created_at': datetime.now().isoformat()
                 }
                 
+                # This creates a NEW prediction record with a new unique ID
+                # Old predictions are NOT deleted or replaced
                 new_prediction = instantdb.create_prediction(game_type, prediction_data)
                 prediction_id = new_prediction.get('id', 'unknown')
-                print(f"   ✅ Saved with ID: {prediction_id}")
-                logger.info(f"   ✅ Saved with ID: {prediction_id}")
+                print(f"   ✅ Created NEW prediction record with ID: {prediction_id}")
+                logger.info(f"   ✅ Created NEW prediction record with ID: {prediction_id} (old predictions preserved)")
                 
                 predictions[model_name] = {
                     'numbers': predicted_numbers,
@@ -338,6 +600,24 @@ def generate_predictions(game_type: str = Path(..., description="Game type ident
         logger.info(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{total_models}")
         logger.info(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{total_models}")
         logger.info("=" * 80)
+        
+        # Auto-calculate accuracy for newly generated predictions (non-blocking background task)
+        try:
+            # Use threading to run in background without blocking response
+            import threading
+            def run_auto_calculate():
+                import asyncio
+                try:
+                    asyncio.run(auto_calculate_accuracy_for_new_results(game_type))
+                except Exception as e:
+                    logger.warning(f"Background auto-calculation failed: {e}")
+            
+            thread = threading.Thread(target=run_auto_calculate)
+            thread.daemon = True
+            thread.start()
+            logger.info(f"✅ Triggered background auto-calculation of accuracy for {game_type}")
+        except Exception as e:
+            logger.warning(f"Failed to trigger auto-calculation after prediction generation: {e}")
         
         return {
             'success': True,
@@ -448,6 +728,24 @@ async def calculate_accuracy(
         }
         
         instantdb.create_prediction_accuracy(game_type, accuracy_data)
+        
+        # Trigger DRL learning from stored accuracy records if this is a DRL prediction
+        if prediction.get('model_type') == 'DRL':
+            try:
+                # Get recent accuracy records for this game (DRL predictions only)
+                accuracy_records = instantdb.get_prediction_accuracy(game_type)
+                
+                # Filter for DRL predictions
+                predictions_all = instantdb.get_predictions(game_type, limit=1000)
+                drl_prediction_ids = {p.get('id') for p in predictions_all if p.get('model_type') == 'DRL'}
+                drl_accuracy = [acc for acc in accuracy_records if acc.get('prediction_id') in drl_prediction_ids]
+                
+                # Update DRL agent with new feedback
+                if len(drl_accuracy) >= 5:  # Only update if we have enough data
+                    drl_agent.learn_from_accuracy_records(game_type, drl_accuracy, instantdb)
+                    logger.info(f"DRL agent updated with accuracy feedback for {game_type}")
+            except Exception as e:
+                logger.warning(f"Failed to update DRL with accuracy (non-critical): {e}")
         
         return {
             'success': True,

@@ -391,15 +391,22 @@ class InstantDBClient:
             if result.returncode == 0:
                 try:
                     response = json.loads(result.stdout)
-                    logger.debug(f"Admin SDK bridge success: {response}")
+                    logger.info(f"Admin SDK bridge success: {response}")
+                    # Log stderr for debugging (contains info messages)
+                    if result.stderr:
+                        logger.debug(f"Node.js stderr: {result.stderr}")
                     return response
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as e:
                     # If stdout is not JSON, check stderr for info
-                    logger.debug(f"Admin SDK output: {result.stdout}")
-                    return {'success': True, 'id': 'unknown'}
+                    logger.warning(f"Admin SDK output is not JSON: {result.stdout}")
+                    logger.warning(f"Stderr: {result.stderr}")
+                    # Still return success if script exited with 0
+                    return {'success': True, 'id': 'unknown', 'raw_output': result.stdout}
             else:
                 error_msg = result.stderr or result.stdout
-                logger.error(f"Node.js script failed: {error_msg}")
+                logger.error(f"Node.js script failed with return code {result.returncode}")
+                logger.error(f"Stdout: {result.stdout}")
+                logger.error(f"Stderr: {result.stderr}")
                 raise Exception(f"Admin SDK bridge failed: {error_msg}")
                 
         except FileNotFoundError as e:

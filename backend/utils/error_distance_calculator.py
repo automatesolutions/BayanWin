@@ -46,15 +46,21 @@ def calculate_all_metrics(predicted: List[int], actual: List[int]) -> Dict:
         actual: List of 6 actual numbers
         
     Returns:
-        Dictionary with all distance metrics
+        Dictionary with all distance metrics including error_distance and numbers_matched
     """
+    euclidean_dist = calculate_euclidean_distance(predicted, actual)
+    numbers_matched = calculate_set_intersection(predicted, actual)
+    
     return {
-        'euclidean_distance': calculate_euclidean_distance(predicted, actual),
+        'euclidean_distance': euclidean_dist,
         'manhattan_distance': calculate_manhattan_distance(predicted, actual),
         'hamming_distance': calculate_hamming_distance(predicted, actual),
-        'set_intersection': calculate_set_intersection(predicted, actual),
+        'set_intersection': numbers_matched,
         'sum_difference': calculate_sum_difference(predicted, actual),
-        'product_difference': calculate_product_difference(predicted, actual)
+        'product_difference': calculate_product_difference(predicted, actual),
+        # Aliases for compatibility
+        'error_distance': euclidean_dist,
+        'numbers_matched': numbers_matched
     }
 
 # store_prediction_accuracy removed - now handled directly in app.py using InstantDB client

@@ -79,5 +79,9 @@ export const scrapeData = (data = {}) => {
   return api.post('/api/scrape', data);
 };
 
+export const autoCalculateAccuracy = (gameType = null) => {
+  return api.post('/api/accuracy/auto-calculate', { game_type: gameType || null });
+};
+
 export default api;
 
