@@ -257,14 +257,15 @@ def generate_predictions(game_type: str = Path(..., description="Game type ident
                 import time
                 start_time = time.time()
                 
-                # Generate prediction with timeout (60 seconds per model)
+                # Generate prediction with timeout (longer timeout for DRL)
                 import concurrent.futures
+                timeout_seconds = 120 if model_name == 'DRL' else 60  # DRL needs more time
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(model_instance.predict, game_type)
                     try:
-                        predicted_numbers = future.result(timeout=60)  # 60 second timeout
+                        predicted_numbers = future.result(timeout=timeout_seconds)
                     except concurrent.futures.TimeoutError:
-                        raise TimeoutError(f"{model_name} took longer than 60 seconds")
+                        raise TimeoutError(f"{model_name} took longer than {timeout_seconds} seconds")
                 
                 elapsed = time.time() - start_time
                 print(f"   ✅ {model_name} completed in {elapsed:.2f}s")

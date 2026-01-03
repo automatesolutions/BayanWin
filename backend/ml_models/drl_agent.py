@@ -27,13 +27,14 @@ class DRLAgent:
         self.trained_game_type = None  # Track which game type this model was trained on
         
     def _build_model(self, state_size: int, action_size: int):
-        """Build DQN model."""
+        """Build DQN model (optimized for speed)."""
+        # Reduced model size for faster training
         model = keras.Sequential([
-            layers.Dense(128, activation='relu', input_shape=(state_size,)),
+            layers.Dense(64, activation='relu', input_shape=(state_size,)),  # Reduced from 128
             layers.Dropout(0.2),
-            layers.Dense(128, activation='relu'),
+            layers.Dense(64, activation='relu'),  # Reduced from 128
             layers.Dropout(0.2),
-            layers.Dense(64, activation='relu'),
+            layers.Dense(32, activation='relu'),  # Reduced from 64
             layers.Dense(action_size, activation='linear')
         ])
         
@@ -142,41 +143,47 @@ class DRLAgent:
             matches = metrics.get('set_intersection', 0)
             reward_a = matches * 10 - euclidean_dist * 0.1
         
-        # Feedback Loop B: K-Means & PCA
-        df = get_historical_data(game_type, limit=1000)
-        if len(df) >= 50:
-            # Prepare data for clustering
-            data_points = []
-            for idx in range(len(df)):
-                row = df.iloc[idx]
-                numbers = sorted([
-                    row['number_1'], row['number_2'], row['number_3'],
-                    row['number_4'], row['number_5'], row['number_6']
-                ])
-                sum_val = sum(numbers)
-                product_val = np.prod(numbers)
-                data_points.append([sum_val, product_val])
-            
-            if len(data_points) >= 5:
-                X = np.array(data_points)
+        # Feedback Loop B: K-Means & PCA (simplified for performance)
+        # Skip expensive clustering if we have limited data or time constraints
+        df = get_historical_data(game_type, limit=200)  # Reduced from 1000 to 200
+        if len(df) >= 30:  # Reduced threshold from 50 to 30
+            try:
+                # Prepare data for clustering (simplified)
+                data_points = []
+                for idx in range(min(len(df), 100)):  # Limit to first 100 rows
+                    row = df.iloc[idx]
+                    numbers = sorted([
+                        row['number_1'], row['number_2'], row['number_3'],
+                        row['number_4'], row['number_5'], row['number_6']
+                    ])
+                    sum_val = sum(numbers)
+                    product_val = np.prod(numbers) if np.prod(numbers) < 1e10 else 1e10  # Prevent overflow
+                    data_points.append([sum_val, product_val])
                 
-                # Apply PCA
-                pca = PCA(n_components=2)
-                X_pca = pca.fit_transform(X)
-                
-                # K-Means clustering
-                kmeans = KMeans(n_clusters=min(5, len(data_points) // 10), random_state=42)
-                clusters = kmeans.fit_predict(X_pca)
-                
-                # Check if prediction falls in high-density cluster
-                pred_sum = sum(predicted)
-                pred_product = np.prod(predicted)
-                pred_point = pca.transform([[pred_sum, pred_product]])[0]
-                pred_cluster = kmeans.predict([pred_point])[0]
-                
-                # Reward based on cluster density
-                cluster_density = np.sum(clusters == pred_cluster) / len(clusters)
-                reward_b = cluster_density * 20
+                if len(data_points) >= 5:
+                    X = np.array(data_points)
+                    
+                    # Apply PCA (faster with fewer components)
+                    pca = PCA(n_components=min(2, len(data_points) - 1))
+                    X_pca = pca.fit_transform(X)
+                    
+                    # K-Means clustering (fewer clusters for speed)
+                    n_clusters = min(3, len(data_points) // 10)  # Reduced from 5 to 3
+                    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=3)  # Reduced n_init
+                    clusters = kmeans.fit_predict(X_pca)
+                    
+                    # Check if prediction falls in high-density cluster
+                    pred_sum = sum(predicted)
+                    pred_product = min(np.prod(predicted), 1e10)  # Prevent overflow
+                    pred_point = pca.transform([[pred_sum, pred_product]])[0]
+                    pred_cluster = kmeans.predict([pred_point])[0]
+                    
+                    # Reward based on cluster density
+                    cluster_density = np.sum(clusters == pred_cluster) / len(clusters)
+                    reward_b = cluster_density * 20
+            except Exception as e:
+                # If clustering fails, just skip this reward component
+                reward_b = 0
         
         # Feedback Loop C: Frequency Analysis
         hot_numbers = get_hot_numbers(game_type, top_n=10)
@@ -267,9 +274,10 @@ class DRLAgent:
             if self.epsilon > self.epsilon_min:
                 self.epsilon *= self.epsilon_decay
             
-            # Train on batch if memory is sufficient
-            if len(self.memory) >= 32:
-                batch_indices = np.random.choice(len(self.memory), size=min(32, len(self.memory)), replace=False)
+            # Train on batch if memory is sufficient (reduced batch size for speed)
+            if len(self.memory) >= 16:  # Reduced from 32 to 16
+                batch_size = min(16, len(self.memory))  # Reduced from 32 to 16
+                batch_indices = np.random.choice(len(self.memory), size=batch_size, replace=False)
                 # Get states from memory - they should all have the same shape
                 # Use stack instead of array to ensure proper shape handling
                 try:
@@ -283,9 +291,10 @@ class DRLAgent:
                 
                 # Update Q-values
                 q_values = self.model.predict(states_batch, verbose=0)
-                q_values[range(len(batch)), actions_batch] = rewards_batch
+                q_values[range(len(batch_indices)), actions_batch] = rewards_batch
                 
-                self.model.fit(states_batch, q_values, epochs=1, verbose=0)
+                # Faster training with fewer epochs
+                self.model.fit(states_batch, q_values, epochs=1, verbose=0, batch_size=batch_size)
             
             # Update target model periodically
             if episode % 10 == 0:
@@ -307,7 +316,7 @@ class DRLAgent:
         """
         # Retrain if not trained or if game type changed (different max_number = different state size)
         if not self.is_trained or self.trained_game_type != game_type:
-            self.train(game_type, episodes=5)  # Reduced to 5 episodes for faster predictions
+            self.train(game_type, episodes=3)  # Reduced to 3 episodes for faster predictions
         
         state = self._get_state(game_type)
         state = state.reshape(1, -1)
