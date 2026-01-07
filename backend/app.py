@@ -2,7 +2,7 @@
 from fastapi import FastAPI, HTTPException, Query, Path, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from services.instantdb_client import instantdb
 from scrapers.google_sheets_scraper import GoogleSheetsScraper
 from ml_models.xgboost_model import XGBoostModel
@@ -17,8 +17,29 @@ from typing import Optional
 from pydantic import BaseModel
 import json
 import logging
+import numpy as np
 
+# Configure logging to show INFO level messages
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
+
+def convert_to_python_types(obj):
+    """Convert numpy types to native Python types for JSON serialization."""
+    if isinstance(obj, dict):
+        return {k: convert_to_python_types(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [convert_to_python_types(item) for item in obj]
+    elif isinstance(obj, (np.integer, np.int64, np.int32)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, np.float64, np.float32)):
+        return float(obj)
+    elif isinstance(obj, np.ndarray):
+        return obj.tolist()
+    else:
+        return obj
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -124,11 +145,11 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
     
     for game in games_to_process:
         try:
-            # Get all results (no date restriction - match all available results)
-            results = instantdb.get_results(game, limit=1000)
+            # Get all results sorted by date DESCENDING (newest first) to match recent predictions
+            all_results = instantdb.get_results(game, limit=1000, offset=0, order_by='draw_date.desc')
             valid_results = []
             
-            for r in results:
+            for r in all_results:
                 draw_date = r.get('draw_date')
                 if not draw_date:
                     continue
@@ -145,7 +166,7 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
             
             logger.info(f"Found {len(valid_results)} valid results for {game}")
             
-            # Get predictions without accuracy records
+            # Get predictions
             predictions = instantdb.get_predictions(game, limit=1000)
             logger.info(f"Found {len(predictions)} predictions for {game}")
             
@@ -161,45 +182,65 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
             logger.info(f"Found {len(existing_pairs)} existing accuracy records for {game}")
             calculated_count = 0
             
-            for result in valid_results:
-                result_date_str = result.get('draw_date')
-                if not result_date_str:
-                    continue
-                
-                # Extract date part
-                result_date = result_date_str.split('T')[0] if 'T' in result_date_str else result_date_str
-                
-                # Find predictions that match this result's draw date
+            # Helper function to parse date strings
+            def parse_date_str(s):
+                if not s:
+                    return None
+                d = s.split('T')[0] if 'T' in s else s[:10]
+                try:
+                    return datetime.strptime(d, '%Y-%m-%d').date()
+                except:
+                    return None
+            
+            # Pre-parse result dates
+            results_with_date = [
+                (r, parse_date_str(r.get('draw_date')))
+                for r in valid_results
+            ]
+            results_with_date = [(r, d) for (r, d) in results_with_date if d is not None]
+            
+            # Find matching predictions for each result
+            for idx, (r, result_date_obj) in enumerate(results_with_date):
+                result_id = str(r.get('id'))
                 matching_predictions = []
+                
+                # Log the first few results being processed
+                if idx < 3:
+                    logger.info(f"Processing result #{idx+1}: draw_date={result_date_obj}, result_id={result_id}")
+                
                 for p in predictions:
-                    target_date = p.get('target_draw_date')
-                    if not target_date:
+                    # Prefer target_draw_date; fallback to created_at for old predictions
+                    td = p.get('target_draw_date')
+                    if not td:
+                        ca = p.get('created_at')
+                        if ca:
+                            td = ca.split('T')[0] if 'T' in ca else ca[:10]
+                            logger.info(f"Using created_at as fallback for prediction {p.get('id')}: {td}")
+                        else:
+                            logger.debug(f"Skipping prediction {p.get('id')} - no date found")
+                            continue
+                    
+                    pred_date_obj = parse_date_str(td)
+                    if not pred_date_obj:
+                        logger.debug(f"Skipping prediction {p.get('id')} - couldn't parse date: {td}")
                         continue
                     
-                    # Extract date part
-                    pred_date = target_date.split('T')[0] if 'T' in target_date else target_date
+                    # Log first result's first few comparisons
+                    if idx < 1 and len(matching_predictions) < 3:
+                        logger.info(f"  Comparing pred {p.get('id')[:8]}... ({pred_date_obj}) vs result ({result_date_obj})")
                     
-                    # Normalize dates for comparison (handle different formats)
-                    try:
-                        # Try to parse and compare dates
-                        pred_date_obj = datetime.strptime(pred_date, '%Y-%m-%d').date() if len(pred_date) == 10 else None
-                        result_date_obj = datetime.strptime(result_date, '%Y-%m-%d').date() if len(result_date) == 10 else None
-                        
-                        if pred_date_obj and result_date_obj and pred_date_obj == result_date_obj:
-                            matching_predictions.append(p)
-                        elif pred_date == result_date:  # Fallback to string comparison
-                            matching_predictions.append(p)
-                    except:
-                        # Fallback to string comparison
-                        if pred_date == result_date:
-                            matching_predictions.append(p)
+                    # Match predictions made BEFORE the draw date (1-7 days before)
+                    # We ONLY match future results, not exact date matches
+                    if pred_date_obj < result_date_obj and (result_date_obj - pred_date_obj) <= timedelta(days=7):
+                        matching_predictions.append(p)
+                        days_before = (result_date_obj - pred_date_obj).days
+                        logger.info(f"✓ Match: prediction from {pred_date_obj} ({days_before} days before) → result from {result_date_obj}")
                 
                 for prediction in matching_predictions:
                     pred_id = str(prediction.get('id'))
-                    res_id = str(result.get('id'))
                     
                     # Check if this pair already has accuracy calculated
-                    if (pred_id, res_id) in existing_pairs:
+                    if (pred_id, result_id) in existing_pairs:
                         continue
                     
                     # Calculate accuracy automatically
@@ -213,9 +254,9 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
                             prediction.get('predicted_number_6')
                         ]
                         actual = [
-                            result.get('number_1'), result.get('number_2'),
-                            result.get('number_3'), result.get('number_4'),
-                            result.get('number_5'), result.get('number_6')
+                            r.get('number_1'), r.get('number_2'),
+                            r.get('number_3'), r.get('number_4'),
+                            r.get('number_5'), r.get('number_6')
                         ]
                         
                         # Validate numbers
@@ -223,24 +264,26 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
                             continue
                         
                         metrics = calculate_all_metrics(predicted, actual)
+                        # Convert numpy types to native Python types for JSON serialization
+                        metrics_clean = convert_to_python_types(metrics)
                         
                         accuracy_data = {
                             'prediction_id': pred_id,
-                            'result_id': res_id,
-                            'error_distance': metrics.get('error_distance'),
-                            'numbers_matched': metrics.get('numbers_matched'),
-                            'distance_metrics': metrics,
+                            'result_id': result_id,
+                            'error_distance': float(metrics_clean.get('error_distance')),
+                            'numbers_matched': int(metrics_clean.get('numbers_matched')),
+                            'distance_metrics': metrics_clean,
                             'calculated_at': datetime.now().isoformat()
                         }
                         
                         instantdb.create_prediction_accuracy(game, accuracy_data)
-                        existing_pairs.add((pred_id, res_id))
+                        existing_pairs.add((pred_id, result_id))
                         calculated_count += 1
                         total_calculated += 1
                         
-                        logger.info(f"Auto-calculated accuracy for {game} prediction {pred_id} vs result {res_id}")
+                        logger.info(f"Auto-calculated accuracy for {game} prediction {pred_id} vs result {result_id}")
                     except Exception as e:
-                        logger.warning(f"Failed to auto-calculate accuracy for {game} prediction {pred_id} vs result {res_id}: {e}")
+                        logger.warning(f"Failed to auto-calculate accuracy for {game} prediction {pred_id} vs result {result_id}: {e}")
                         import traceback
                         logger.debug(traceback.format_exc())
                         continue
@@ -272,9 +315,34 @@ async def get_accuracy_diagnostics(game_type: str = Path(...)):
         predictions = instantdb.get_predictions(game_type, limit=1000)
         accuracy_records = instantdb.get_prediction_accuracy(game_type)
         
-        # Sample some dates for debugging
-        sample_result_dates = [r.get('draw_date') for r in results[:5] if r.get('draw_date')]
-        sample_prediction_dates = [p.get('target_draw_date') for p in predictions[:5] if p.get('target_draw_date')]
+        # Sample some dates for debugging - show first AND last dates
+        sample_result_dates = [r.get('draw_date') for r in results[:10] if r.get('draw_date')]
+        sample_prediction_dates = [p.get('target_draw_date') or p.get('created_at') for p in predictions[:10] if p.get('target_draw_date') or p.get('created_at')]
+        
+        # Get date ranges
+        result_dates_all = [r.get('draw_date') for r in results if r.get('draw_date')]
+        prediction_dates_all = [p.get('target_draw_date') or p.get('created_at') for p in predictions if p.get('target_draw_date') or p.get('created_at')]
+        
+        result_date_range = None
+        if result_dates_all:
+            result_date_range = {
+                'earliest': min(result_dates_all),
+                'latest': max(result_dates_all)
+            }
+        
+        prediction_date_range = None
+        if prediction_dates_all:
+            prediction_date_range = {
+                'earliest': min(prediction_dates_all),
+                'latest': max(prediction_dates_all)
+            }
+        
+        # Check for overlapping dates
+        overlapping_dates = []
+        if result_dates_all and prediction_dates_all:
+            result_dates_set = set([d.split('T')[0] for d in result_dates_all])
+            prediction_dates_set = set([d.split('T')[0] for d in prediction_dates_all])
+            overlapping_dates = list(result_dates_set.intersection(prediction_dates_set))[:10]
         
         return {
             'game_type': game_type,
@@ -283,12 +351,29 @@ async def get_accuracy_diagnostics(game_type: str = Path(...)):
             'total_accuracy_records': len(accuracy_records),
             'sample_result_dates': sample_result_dates,
             'sample_prediction_dates': sample_prediction_dates,
+            'result_date_range': result_date_range,
+            'prediction_date_range': prediction_date_range,
+            'overlapping_dates': overlapping_dates,
+            'dates_match': len(overlapping_dates) > 0,
             'has_valid_results': any(all(r.get(f'number_{i}') for i in range(1, 7)) for r in results),
-            'has_valid_predictions': any(all(p.get(f'predicted_number_{i}') for i in range(1, 7)) for p in predictions)
+            'has_valid_predictions': any(all(p.get(f'predicted_number_{i}') for i in range(1, 7)) for p in predictions),
+            'diagnosis': _diagnose_matching_issue(len(predictions), len(results), len(overlapping_dates), prediction_date_range, result_date_range)
         }
     except Exception as e:
         logger.error(f"Error in diagnostics: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+def _diagnose_matching_issue(pred_count, result_count, overlap_count, pred_range, result_range):
+    """Diagnose why predictions and results aren't matching."""
+    if pred_count == 0:
+        return "No predictions found. Generate predictions first."
+    if result_count == 0:
+        return "No results found. Scrape lottery results first."
+    if overlap_count > 0:
+        return f"Found {overlap_count} matching dates! Predictions should match to results."
+    if pred_range and result_range:
+        return f"Date mismatch: Predictions are from {pred_range['earliest']} to {pred_range['latest']}, but results are from {result_range['earliest']} to {result_range['latest']}. You need results from the same time period as your predictions."
+    return "Unable to determine issue. Check date formats."
 
 @app.post("/api/accuracy/auto-calculate")
 async def trigger_auto_calculate_accuracy(
@@ -322,7 +407,7 @@ async def trigger_auto_calculate_accuracy(
                 return {
                     'success': False,
                     'total_calculated': 0,
-                    'message': f'No predictions found for {game_type}. Please generate predictions first.',
+                    'message': f'No predictions found for {game_type}. Please generate predictions by clicking "⚡ Generate Predictions" button first. If you already generated predictions, they might be in a different game type or not saved to the database.',
                     'diagnostics': {
                         'results_count': len(results),
                         'predictions_count': 0
@@ -331,10 +416,28 @@ async def trigger_auto_calculate_accuracy(
         
         total_calculated = await auto_calculate_accuracy_for_new_results(game_type)
         
+        # Get additional diagnostics if no records calculated
+        if total_calculated == 0 and game_type:
+            results = instantdb.get_results(game_type, limit=1000)
+            predictions = instantdb.get_predictions(game_type, limit=1000)
+            accuracy_records = instantdb.get_prediction_accuracy(game_type)
+            
+            message = f'No new accuracy records calculated. '
+            if len(predictions) == 0:
+                message += 'No predictions found. Please generate predictions first.'
+            elif len(results) == 0:
+                message += 'No results found. Please scrape results first.'
+            elif len(accuracy_records) > 0:
+                message += f'All {len(predictions)} predictions are already matched to results.'
+            else:
+                message += 'Predictions and results dates do not match. The system looks for exact matches or predictions made up to 7 days before a result.'
+        else:
+            message = f'Successfully calculated {total_calculated} accuracy records' if total_calculated > 0 else 'No new accuracy records calculated.'
+        
         return {
             'success': True,
             'total_calculated': total_calculated,
-            'message': f'Successfully calculated {total_calculated} accuracy records' if total_calculated > 0 else 'No new accuracy records calculated. All predictions may already be matched or dates do not match.'
+            'message': message
         }
     except Exception as e:
         logger.error(f"Error in manual auto-calculate: {e}")
@@ -716,14 +819,16 @@ async def calculate_accuracy(
         
         # Calculate metrics
         metrics = calculate_all_metrics(predicted, actual)
+        # Convert numpy types to native Python types for JSON serialization
+        metrics_clean = convert_to_python_types(metrics)
         
         # Store accuracy in InstantDB
         accuracy_data = {
             'prediction_id': prediction_id,
             'result_id': result_id,
-            'error_distance': metrics.get('error_distance'),
-            'numbers_matched': metrics.get('numbers_matched'),
-            'distance_metrics': metrics,
+            'error_distance': float(metrics_clean.get('error_distance')),
+            'numbers_matched': int(metrics_clean.get('numbers_matched')),
+            'distance_metrics': metrics_clean,
             'calculated_at': datetime.now().isoformat()
         }
         

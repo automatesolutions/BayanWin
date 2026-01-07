@@ -2,6 +2,8 @@
 
 A modern, full-stack web application that scrapes lottery results from Google Sheets, stores them in InstantDB, and provides 5 different ML-based prediction models for multiple lottery games.
 
+> 📚 **Detailed Documentation**: For comprehensive system documentation including workflow flowchart and architecture details, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)
+
 ## 🎨 Design
 
 **Modern Tech Aesthetic:**
@@ -16,30 +18,50 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
 
 ## ✨ Features
 
-- **Data Scraping**: Automated scraping of lottery results from Google Sheets for 5 games
+- **Automated Data Scraping**: 
   - Auto-scrapes new data when a game is selected
   - Uses pandas to read CSV exports directly from Google Sheets
-  - Automatically detects and skips duplicate entries
-- **Database**: InstantDB BaaS (Backend-as-a-Service)
+  - Automatically detects and skips duplicate entries based on draw_date and draw_number
+  - Supports 5 lottery games with separate data sources
+  
+- **InstantDB Database Integration**:
+  - Backend-as-a-Service (BaaS) for seamless data management
   - Backend uses InstantDB Admin SDK via Node.js bridge scripts for reliable writes
   - REST API used for reads and queries
   - All predictions are automatically saved to InstantDB
-- **5 ML Prediction Models**:
-  - **XGBoost**: Gradient boosting model using historical patterns
-  - **Decision Tree**: Random Forest classifier based on frequency analysis
-  - **Markov Chain**: State transition model for sequence prediction
-  - **Normal Distribution**: Gaussian distribution analysis - highest probability patterns
-  - **Deep Reinforcement Learning (DRL)**: DRL agent with 3 feedback loops (optimized to 5 episodes)
-- **Smart Model Training**: Models automatically retrain when switching between game types
-- **Modern Web Interface**: React frontend with Vite, Tailwind CSS, and modern tech design
+  - Automatic accuracy calculation when new results are scraped
+
+- **5 Machine Learning Prediction Models**:
+  - **XGBoost**: Gradient boosting model using historical patterns (~6-10 seconds)
+  - **Decision Tree**: Random Forest classifier based on frequency analysis (~4-6 seconds)
+  - **Markov Chain**: State transition model for sequence prediction (~1-3 seconds)
+  - **Normal Distribution**: Gaussian distribution analysis - highest probability patterns (~0.1-0.5 seconds)
+  - **Deep Reinforcement Learning (DRL)**: DRL agent with 3 feedback loops, continuously improves through accuracy feedback (~20-40 seconds, 5 episodes)
+
+- **Smart Model Training**: 
+  - Models automatically retrain when switching between game types
+  - Parallel processing for faster prediction generation
+  - Real-time training status indicators
+
+- **Modern Web Interface**: 
+  - React 18 frontend with Vite, Tailwind CSS, and modern tech design
   - Real-time "Learning..." status indicators for each model
   - Partial results display - shows successful predictions immediately
   - Error states clearly displayed for failed models
-- **Error Distance Analysis**: Track prediction accuracy with multiple metrics
-- **Gaussian Distribution Analysis**: Visualize sum and product distributions with scatter plots
+  - Responsive design with smooth animations
+
+- **Accuracy Tracking & Analysis**:
+  - Auto-calculate accuracy when predictions match actual results
+  - Error Distance Analysis with multiple metrics
+  - Track prediction accuracy trends over time
+  - Compare model performance across different time periods
+
+- **Statistical Analysis**:
+  - **Frequency Analysis**: Hot numbers, cold numbers, overdue numbers
+  - **Gaussian Distribution Analysis**: Visualize sum and product distributions with scatter plots
   - Highlights draws with winners
   - Statistical analysis of number patterns
-- **Real-time Statistics**: Frequency analysis, hot/cold numbers, overdue numbers
+  - Real-time statistics dashboard
 
 ## 🎮 Supported Games
 
@@ -73,8 +95,10 @@ LOF_V2/
 │   │   └── styles/      # CSS styles
 │   ├── package.json     # Node dependencies
 │   └── tailwind.config.js # Tailwind configuration
-├── .gitignore          # Git ignore rules
-└── README.md          # This file
+├── lof-v2-db/         # InstantDB schema and configuration
+├── .gitignore         # Git ignore rules
+├── README.md          # This file
+└── SOFTWARE_DOCUMENTATION.html  # Detailed system documentation with flowchart
 ```
 
 ## 🚀 Quick Start
@@ -226,12 +250,18 @@ The `.env` file in the `backend` directory should contain:
 
 ### Predictions
 - `POST /api/predict/{game_type}` - Generate predictions from all 5 ML models
+  - Returns predictions from all models in real-time as they complete
+  - Automatically saves predictions to InstantDB
+  - Triggers background accuracy calculation
 - `GET /api/predictions/{game_type}` - Get stored predictions
   - Query params: `limit`
 - `GET /api/predictions/{game_type}/accuracy` - Get prediction accuracy metrics
   - Query params: `limit`
+  - Returns error distance, numbers matched, and distance metrics
 - `POST /api/predictions/{prediction_id}/calculate-accuracy` - Calculate accuracy for a prediction
   - Body: `{ "result_id": "...", "game_type": "..." }`
+- `POST /api/accuracy/auto-calculate` - Manually trigger auto-calculation of accuracy
+  - Body: `{ "game_type": "..." }` (optional - processes all games if omitted)
 
 ### Statistics
 - `GET /api/stats/{game_type}` - Get frequency statistics
@@ -246,40 +276,69 @@ The `.env` file in the `backend` directory should contain:
 
 ## 🎯 Usage
 
+### Getting Started
+
 1. **Deploy InstantDB schema** (run `npm run dev` in `lof-v2-db` directory)
 2. **Start the backend server** (port 5000)
 3. **Start the frontend development server** (port 5173)
 4. **Open browser** to `http://localhost:5173`
-5. **Select a game** from the game selector
+
+### Workflow
+
+1. **Select a Game** from the game selector
    - Automatically scrapes new data from Google Sheets
-   - Shows "Learning..." status for each model
-6. **Click "⚡ Generate Predictions"** to get predictions from all 5 ML models
-   - Models train automatically for the selected game type
-   - Predictions are saved to InstantDB automatically
-   - Results appear in real-time as each model completes
-7. **View statistics** and error distance analysis for each game
-   - Gaussian distribution analysis with scatter plots
-   - Highlights draws with winners
-   - Error distance trends and model comparison
+   - Validates and saves new results to InstantDB (skips duplicates)
+   - Auto-calculates accuracy for matching predictions and results
 
-## 🏗️ Tech Stack
+2. **Generate Predictions** by clicking "⚡ Generate Predictions"
+   - System fetches historical data from InstantDB
+   - All 5 ML models train and predict in parallel
+   - Predictions appear in real-time as each model completes
+   - All predictions are automatically saved to InstantDB
+   - Background process matches predictions to results and calculates accuracy
 
-### Backend
-- **FastAPI** - Modern Python web framework
+3. **View Results & Analysis**
+   - **Predictions Display**: See all 5 model predictions with real-time status
+   - **Historical Results**: Browse past lottery results with pagination
+   - **Statistics Panel**: View hot/cold/overdue numbers and frequency analysis
+   - **Error Distance Analysis**: Track prediction accuracy with detailed metrics
+   - **Gaussian Distribution**: Visualize sum/product distributions with scatter plots
+     - Highlights draws with winners
+     - Statistical analysis of number patterns
+
+4. **DRL Learning Loop** (Automatic)
+   - DRL agent receives feedback from accuracy calculations
+   - Continuously improves predictions based on error metrics
+   - Learning happens automatically when accuracy records are available
+
+## 🏗️ System Architecture
+
+BayanWin follows a **three-tier architecture** with clear separation of concerns:
+
+- **Frontend Layer**: React-based user interface with real-time updates
+- **Backend Layer**: FastAPI REST API with ML model orchestration
+- **Data Layer**: InstantDB BaaS for data storage and management
+
+> 📊 For detailed architecture diagrams and workflow flowchart, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)
+
+### Tech Stack
+
+**Backend:**
+- **FastAPI** - Modern Python web framework with async support
 - **InstantDB** - Backend-as-a-Service (REST API + Admin SDK via Node.js)
-- **Uvicorn** - ASGI server
+- **Uvicorn** - ASGI server for high-performance async operations
 - **Pandas** - Google Sheets CSV reading and data processing
-- **XGBoost, TensorFlow, scikit-learn** - ML libraries
-- **NumPy** - Numerical computing
+- **XGBoost, TensorFlow, scikit-learn** - ML libraries for predictions
+- **NumPy** - Numerical computing and array operations
 - **Node.js** - Bridge scripts for InstantDB Admin SDK writes
 
-### Frontend
-- **React 18** - UI library
-- **Vite** - Build tool and dev server
+**Frontend:**
+- **React 18** - Modern UI library with hooks
+- **Vite** - Fast build tool and dev server
 - **Tailwind CSS** - Utility-first CSS framework
-- **Axios** - HTTP client
-- **Recharts** - Chart library
-- **React Router** - Routing
+- **Axios** - HTTP client for API communication
+- **Recharts** - Chart library for data visualization
+- **React Router** - Client-side routing
 
 ## 🎨 Design System
 
@@ -293,34 +352,62 @@ The `.env` file in the `backend` directory should contain:
 - **BayanWin Title**: Montserrat Bold (Google Fonts)
 - **Body**: Inter, system fonts
 
-## 📝 Notes
+## 📝 Important Notes
 
+### Data Management
 - **Data Source**: Lottery data is scraped from publicly accessible Google Sheets
 - **Auto-Scraping**: Data is automatically scraped when a game is selected
-- **Model Training**: Models automatically retrain when switching between game types
-- **Prediction Saving**: All predictions are automatically saved to InstantDB
-- **Performance**: 
-  - XGBoost: ~6-10 seconds
-  - DecisionTree: ~4-6 seconds
-  - MarkovChain: ~1-3 seconds
-  - AnomalyDetection: ~0.1-0.5 seconds
-  - DRL: ~20-40 seconds (5 episodes)
-- **Node.js Required**: Must have Node.js installed for InstantDB writes to work
-- Make sure your InstantDB credentials are correct in `.env`
-- First-time prediction generation may take longer as models train
-- Historical data is required for accurate predictions
-- Frontend runs on Vite dev server (port 5173 by default)
-- Backend runs on FastAPI/Uvicorn (port 5000)
+- **Duplicate Detection**: System automatically skips duplicate entries based on draw_date and draw_number
+- **Auto-Accuracy Calculation**: Accuracy is automatically calculated when new results are scraped
+
+### Model Performance
+- **XGBoost**: ~6-10 seconds per prediction (includes training time)
+- **Decision Tree**: ~4-6 seconds per prediction
+- **Markov Chain**: ~1-3 seconds per prediction
+- **Normal Distribution**: ~0.1-0.5 seconds per prediction (fastest)
+- **DRL Agent**: ~20-40 seconds per prediction (5 episodes, continuous learning)
+- **Total Prediction Time**: ~30-60 seconds for all models (parallel execution)
+
+### Model Training & Learning
+- **Smart Retraining**: Models automatically retrain when switching between game types
+- **DRL Feedback Loop**: DRL agent continuously improves through feedback from accuracy records
+- **Historical Data Requirement**: Historical data is required for accurate predictions
+- **First-time Training**: First-time prediction generation may take longer as models train
+
+### Technical Requirements
+- **Node.js Required**: Must have Node.js installed for InstantDB writes to work (Admin SDK bridge scripts)
+- **Environment Variables**: Make sure your InstantDB credentials are correct in `.env`
 - **Schema Deployment**: Must deploy InstantDB schema before first use (run `npm run dev` in `lof-v2-db`)
+- **Ports**: 
+  - Frontend: Vite dev server (port 5173 by default)
+  - Backend: FastAPI/Uvicorn (port 5000)
+
+### Data Storage
+- **Prediction Saving**: All predictions are automatically saved to InstantDB
+- **Accuracy Tracking**: All accuracy metrics are stored for trend analysis
+- **Result Storage**: Historical results are stored with full metadata (draw_date, numbers, jackpot, winners)
 
 ## 🔒 Security
 
-- `.env` files are gitignored - never commit sensitive data
-- `venv/` and `node_modules/` are gitignored
-- InstantDB Admin Token should be kept secret
-- Google Sheets service account credentials (if used) should be kept secret
-- Use environment variables for all sensitive configuration
-- Google Sheets are accessed via public CSV export (no authentication needed for public sheets)
+- **Environment Variables**: `.env` files are gitignored - never commit sensitive data
+- **Dependencies**: `venv/` and `node_modules/` are gitignored
+- **Credentials**: InstantDB Admin Token should be kept secret and never shared
+- **Google Sheets**: Service account credentials (if used) should be kept secret
+- **Configuration**: Use environment variables for all sensitive configuration
+- **Data Access**: Google Sheets are accessed via public CSV export (no authentication needed for public sheets)
+- **API Security**: In production, configure CORS middleware to allow only specific origins
+
+## 📚 Documentation
+
+- **README.md** (this file) - Quick start guide and overview
+- **[SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)** - Comprehensive system documentation with:
+  - Detailed system overview
+  - Architecture diagrams
+  - Complete workflow flowchart
+  - ML models detailed explanation
+  - Data flow and storage details
+  - API endpoints reference
+  - Performance characteristics
 
 ## 📄 License
 
@@ -328,4 +415,19 @@ MIT License
 
 ---
 
-**Built with ❤️ using FastAPI, React, and InstantDB**
+**Built with ❤️ using FastAPI, React, InstantDB, and Machine Learning**
+
+---
+
+## 🔄 System Workflow Summary
+
+1. **User selects game** → Auto-scrapes data from Google Sheets
+2. **Data validation** → Saves new results to InstantDB (skips duplicates)
+3. **User generates predictions** → System fetches historical data
+4. **ML models train & predict** → All 5 models process in parallel
+5. **Predictions saved** → Automatically stored in InstantDB
+6. **Accuracy calculated** → Auto-matched with results when available
+7. **DRL learning loop** → Agent improves through feedback
+8. **Results displayed** → Real-time updates on frontend with statistics
+
+For detailed flowchart visualization, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)

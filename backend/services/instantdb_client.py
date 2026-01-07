@@ -421,7 +421,76 @@ class InstantDBClient:
             raise
     
     def get_predictions(self, game_type: str, limit: int = 50, offset: int = 0) -> List[Dict]:
-        """Get predictions from InstantDB."""
+        """Get predictions from InstantDB using Node.js Admin SDK."""
+        import subprocess
+        import json
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Find the Node.js query script
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(current_dir, '..', 'scripts', 'query_predictions.js')
+            script_path = os.path.normpath(script_path)
+            
+            if not os.path.exists(script_path):
+                # Try alternative path
+                alt_path = os.path.join(os.path.dirname(current_dir), 'scripts', 'query_predictions.js')
+                if os.path.exists(alt_path):
+                    script_path = alt_path
+                else:
+                    logger.warning(f"query_predictions.js not found, falling back to REST API")
+                    return self._get_predictions_rest_api(game_type, limit, offset)
+            
+            # Prepare data for Node.js script
+            input_data = {
+                'game_type': game_type,
+                'limit': limit,
+                'offset': offset
+            }
+            
+            # Set environment variables
+            env = os.environ.copy()
+            if self.app_id:
+                env['INSTANTDB_APP_ID'] = str(self.app_id)
+            if self.admin_token:
+                env['INSTANTDB_ADMIN_TOKEN'] = str(self.admin_token)
+            
+            # Call Node.js script
+            result = subprocess.run(
+                ['node', script_path],
+                input=json.dumps(input_data),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                env=env,
+                cwd=os.path.dirname(script_path) or os.getcwd()
+            )
+            
+            if result.returncode == 0:
+                try:
+                    response = json.loads(result.stdout)
+                    return response.get('predictions', [])
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse query_predictions.js output: {result.stdout}")
+                    logger.error(f"Stderr: {result.stderr}")
+                    return []
+            else:
+                error_msg = result.stderr or result.stdout
+                logger.error(f"query_predictions.js failed: {error_msg}")
+                # Fallback to REST API
+                return self._get_predictions_rest_api(game_type, limit, offset)
+                
+        except FileNotFoundError:
+            logger.warning("Node.js not found, falling back to REST API")
+            return self._get_predictions_rest_api(game_type, limit, offset)
+        except Exception as e:
+            logger.error(f"Error querying predictions via Node.js: {e}")
+            return self._get_predictions_rest_api(game_type, limit, offset)
+    
+    def _get_predictions_rest_api(self, game_type: str, limit: int = 50, offset: int = 0) -> List[Dict]:
+        """Fallback method using REST API."""
         entity_name = f"{game_type}_predictions"
         
         query_params = {
@@ -435,22 +504,159 @@ class InstantDBClient:
     
     # Prediction Accuracy Operations
     def create_prediction_accuracy(self, game_type: str, accuracy_data: Dict) -> Dict:
-        """Create prediction accuracy record in InstantDB."""
+        """Create prediction accuracy record in InstantDB using Admin SDK via Node.js bridge."""
+        import subprocess
+        import json
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
+        
         entity_name = f"{game_type}_prediction_accuracy"
         
+        # Format data for InstantDB schema
         instantdb_data = {
             'prediction_id': accuracy_data.get('prediction_id'),
             'result_id': accuracy_data.get('result_id'),
-            'error_distance': accuracy_data.get('error_distance'),
-            'numbers_matched': accuracy_data.get('numbers_matched'),
+            'error_distance': float(accuracy_data.get('error_distance')) if accuracy_data.get('error_distance') is not None else 0.0,
+            'numbers_matched': int(accuracy_data.get('numbers_matched')) if accuracy_data.get('numbers_matched') is not None else 0,
             'distance_metrics': json.dumps(accuracy_data.get('distance_metrics')) if accuracy_data.get('distance_metrics') else None,
-            'calculated_at': datetime.now().isoformat() if not accuracy_data.get('calculated_at') else accuracy_data.get('calculated_at')
+            'calculated_at': accuracy_data.get('calculated_at') or datetime.now().isoformat()
         }
         
-        return self._make_request('POST', f'entities/{entity_name}', instantdb_data)
+        # Use Node.js Admin SDK bridge
+        try:
+            # Find the Node.js script
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(current_dir, '..', 'scripts', 'save_accuracy.js')
+            script_path = os.path.normpath(script_path)
+            
+            if not os.path.exists(script_path):
+                # Try alternative path
+                alt_path = os.path.join(os.path.dirname(current_dir), 'scripts', 'save_accuracy.js')
+                if os.path.exists(alt_path):
+                    script_path = alt_path
+                else:
+                    raise FileNotFoundError(f"Node.js script not found at {script_path}")
+            
+            # Prepare data for Node.js script
+            input_data = {
+                'game_type': game_type,
+                'accuracy': instantdb_data
+            }
+            
+            # Set environment variables
+            env = os.environ.copy()
+            if self.app_id:
+                env['INSTANTDB_APP_ID'] = str(self.app_id)
+            if self.admin_token:
+                env['INSTANTDB_ADMIN_TOKEN'] = str(self.admin_token)
+            
+            # Call Node.js script
+            result = subprocess.run(
+                ['node', script_path],
+                input=json.dumps(input_data),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                env=env,
+                cwd=os.path.dirname(script_path) or os.getcwd()
+            )
+            
+            if result.returncode == 0:
+                try:
+                    response = json.loads(result.stdout)
+                    logger.info(f"Accuracy record saved successfully: {response}")
+                    return response
+                except json.JSONDecodeError as e:
+                    logger.warning(f"Admin SDK output is not JSON: {result.stdout}")
+                    return {'success': True, 'id': 'unknown', 'raw_output': result.stdout}
+            else:
+                error_msg = result.stderr or result.stdout
+                logger.error(f"save_accuracy.js failed: {error_msg}")
+                raise Exception(f"Admin SDK bridge failed: {error_msg}")
+                
+        except FileNotFoundError as e:
+            if 'node' in str(e).lower() or 'not found' in str(e).lower():
+                logger.error("Node.js not found. Please install Node.js to use InstantDB Admin SDK.")
+                raise Exception("Node.js is required for InstantDB writes. Please install Node.js from https://nodejs.org/")
+            else:
+                logger.error(f"Script file not found: {e}")
+                raise Exception(f"Node.js script not found: {e}")
+        except Exception as e:
+            logger.error(f"Admin SDK bridge error: {e}")
+            raise
     
     def get_prediction_accuracy(self, game_type: str, prediction_id: Optional[str] = None) -> List[Dict]:
-        """Get prediction accuracy records."""
+        """Get prediction accuracy records using Node.js Admin SDK."""
+        import subprocess
+        import json
+        import os
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Find the Node.js query script
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            script_path = os.path.join(current_dir, '..', 'scripts', 'query_accuracy.js')
+            script_path = os.path.normpath(script_path)
+            
+            if not os.path.exists(script_path):
+                alt_path = os.path.join(os.path.dirname(current_dir), 'scripts', 'query_accuracy.js')
+                if os.path.exists(alt_path):
+                    script_path = alt_path
+                else:
+                    logger.warning(f"query_accuracy.js not found, falling back to REST API")
+                    return self._get_accuracy_rest_api(game_type, prediction_id)
+            
+            # Prepare data for Node.js script
+            input_data = {
+                'game_type': game_type
+            }
+            
+            # Set environment variables
+            env = os.environ.copy()
+            if self.app_id:
+                env['INSTANTDB_APP_ID'] = str(self.app_id)
+            if self.admin_token:
+                env['INSTANTDB_ADMIN_TOKEN'] = str(self.admin_token)
+            
+            # Call Node.js script
+            result = subprocess.run(
+                ['node', script_path],
+                input=json.dumps(input_data),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                env=env,
+                cwd=os.path.dirname(script_path) or os.getcwd()
+            )
+            
+            if result.returncode == 0:
+                try:
+                    response = json.loads(result.stdout)
+                    accuracy_records = response.get('accuracy', [])
+                    # Filter by prediction_id if provided
+                    if prediction_id:
+                        accuracy_records = [r for r in accuracy_records if r.get('prediction_id') == prediction_id]
+                    return accuracy_records
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse query_accuracy.js output: {result.stdout}")
+                    logger.error(f"Stderr: {result.stderr}")
+                    return []
+            else:
+                error_msg = result.stderr or result.stdout
+                logger.error(f"query_accuracy.js failed: {error_msg}")
+                return self._get_accuracy_rest_api(game_type, prediction_id)
+                
+        except FileNotFoundError:
+            logger.warning("Node.js not found, falling back to REST API")
+            return self._get_accuracy_rest_api(game_type, prediction_id)
+        except Exception as e:
+            logger.error(f"Error querying accuracy via Node.js: {e}")
+            return self._get_accuracy_rest_api(game_type, prediction_id)
+    
+    def _get_accuracy_rest_api(self, game_type: str, prediction_id: Optional[str] = None) -> List[Dict]:
+        """Fallback method using REST API."""
         entity_name = f"{game_type}_prediction_accuracy"
         
         query_params = {}

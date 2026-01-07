@@ -284,7 +284,7 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
                       <div className="space-y-2">
                         <p className="text-sm text-silver-400">{statusMessage}</p>
                         <p className="text-xs text-silver-500 mt-2">
-                          The system matches predictions to results where the <span className="text-electric-400">target_draw_date</span> matches the <span className="text-electric-400">draw_date</span>.
+                          <span className="text-electric-400">Smart Matching:</span> The system automatically matches predictions to **future** lottery draws that occur 1-7 days after the prediction date.
                         </p>
                       </div>
                     ) : (
@@ -298,7 +298,7 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
                           <li>This page loads</li>
                         </ul>
                         <p className="text-xs text-silver-500 mt-3">
-                          <span className="text-electric-400">How it works:</span> Predictions with a <code className="bg-charcoal-800 px-1 rounded">target_draw_date</code> are matched to results with the same <code className="bg-charcoal-800 px-1 rounded">draw_date</code>, then error distance is calculated.
+                          <span className="text-electric-400">How it works:</span> Predictions are matched to future lottery draws (1-7 days after the prediction). For example, a January 3 prediction will match to January 4-10 draws. Error distance is calculated and fed back to the DRL model for continuous improvement.
                         </p>
                       </>
                     )}

@@ -48,15 +48,15 @@ class DRLAgent:
         
         return model
     
-    def _get_state(self, game_type: str) -> np.ndarray:
+    def _get_state(self, game_type: str, recent_error_distance: float = None) -> np.ndarray:
         """
-        Get current state representation.
+        Get current state representation with IMPROVED error distance awareness.
         
         State includes:
         - Historical draws (encoded)
         - Frequency stats
         - Hot/cold/overdue numbers
-        - Previous 5 predictions
+        - Recent error distance history (NEW)
         """
         df = get_historical_data(game_type, limit=10)
         max_number = Config.GAMES[game_type]['max_number']
@@ -100,12 +100,22 @@ class DRLAgent:
         else:
             recent_vector = np.zeros(max_number)
         
+        # IMPROVED: Add error distance features to state
+        # Normalize error distance (0-1 range)
+        if recent_error_distance is not None:
+            max_error = 200  # Approximate max
+            normalized_error = min(recent_error_distance / max_error, 1.0)
+            error_features = np.array([normalized_error, 1.0 - normalized_error])  # [error, inverse]
+        else:
+            error_features = np.array([0.5, 0.5])  # Neutral if unknown
+        
         # Combine state features
         state = np.concatenate([
             hot_vector,
             cold_vector,
             overdue_vector,
-            recent_vector
+            recent_vector,
+            error_features  # NEW: Error distance awareness
         ])
         
         return state
@@ -126,11 +136,11 @@ class DRLAgent:
         return [int(num) for num in numbers]
     
     def _calculate_reward(self, predicted: List[int], actual: List[int], 
-                         game_type: str) -> float:
+                         game_type: str, error_distance: float = None) -> float:
         """
-        Calculate reward using 3 feedback loops.
+        Calculate reward using 3 feedback loops with IMPROVED error distance focus.
         
-        Feedback Loop A: Error Distance Analysis
+        Feedback Loop A: Error Distance Analysis (PRIMARY - gradient descent style)
         Feedback Loop B: K-Means & PCA
         Feedback Loop C: Frequency Analysis
         """
@@ -138,13 +148,37 @@ class DRLAgent:
         reward_b = 0.0
         reward_c = 0.0
         
-        # Feedback Loop A: Error Distance Analysis
+        # Feedback Loop A: Error Distance Analysis (IMPROVED)
         if actual:
-            metrics = calculate_all_metrics(predicted, actual)
-            # Reward inversely proportional to distance
-            euclidean_dist = metrics.get('euclidean_distance', 100)
-            matches = metrics.get('set_intersection', 0)
-            reward_a = matches * 10 - euclidean_dist * 0.1
+            if error_distance is not None:
+                # Use provided error_distance (from accuracy records)
+                euclidean_dist = error_distance
+                # Calculate matches from predicted/actual if needed
+                predicted_set = set(predicted)
+                actual_set = set(actual)
+                matches = len(predicted_set.intersection(actual_set))
+            else:
+                # Calculate from scratch
+                metrics = calculate_all_metrics(predicted, actual)
+                euclidean_dist = metrics.get('euclidean_distance', 100)
+                matches = metrics.get('set_intersection', 0)
+            
+            # IMPROVED REWARD: Inverse relationship with error distance (like gradient descent)
+            # Lower error = Higher reward
+            # Formula: reward = base_reward / (1 + normalized_error)
+            # This creates a smooth gradient for learning
+            max_possible_error = 200  # Approximate max for 6/58 lottery
+            normalized_error = euclidean_dist / max_possible_error
+            
+            # Primary reward: inverse error distance (stronger signal)
+            # Scale: 0-100 reward range
+            error_reward = 100.0 / (1.0 + normalized_error * 10)
+            
+            # Bonus for matches (secondary signal)
+            match_bonus = matches * 15  # Increased from 10 to 15
+            
+            # Combined: Error distance is PRIMARY, matches are BONUS
+            reward_a = error_reward + match_bonus
         
         # Feedback Loop B: K-Means & PCA (simplified for performance)
         # Skip expensive clustering if we have limited data or time constraints
@@ -226,7 +260,7 @@ class DRLAgent:
             raise ValueError("Insufficient historical data for DRL training")
         
         max_number = Config.GAMES[game_type]['max_number']
-        state_size = max_number * 4  # hot, cold, overdue, recent vectors
+        state_size = max_number * 4 + 2  # hot, cold, overdue, recent vectors + error features (NEW)
         action_size = 1000  # Action space size
         
         # Build models
@@ -360,8 +394,11 @@ class DRLAgent:
             drl_predictions = {p.get('id'): p for p in predictions if p.get('model_type') == 'DRL'}
             
             # Build training data from accuracy records (only for DRL predictions)
+            # IMPROVED: Prioritize low-error predictions for better learning
             learning_data = []
-            for acc_record in accuracy_records[-50:]:  # Use last 50 records
+            prioritized_records = []
+            
+            for acc_record in accuracy_records[-100:]:  # Use last 100 records (increased from 50)
                 prediction_id = acc_record.get('prediction_id')
                 
                 # Only learn from DRL predictions
@@ -376,6 +413,11 @@ class DRLAgent:
                 
                 if not result:
                     continue
+                
+                # Get error_distance directly from accuracy record (IMPROVED)
+                error_distance = acc_record.get('error_distance')
+                if error_distance is None:
+                    continue  # Skip if no error distance
                 
                 predicted = [
                     prediction.get('predicted_number_1'),
@@ -392,15 +434,23 @@ class DRLAgent:
                     result.get('number_5'), result.get('number_6')
                 ]
                 
-                # Get current state (approximation - in production, you'd store state with prediction)
-                state = self._get_state(game_type)
+                # IMPROVED: Get state with error distance awareness
+                state = self._get_state(game_type, recent_error_distance=error_distance)
                 state_1d = np.array(state).flatten()
                 
-                # Calculate reward from stored accuracy
-                reward = self._calculate_reward(predicted, actual, game_type)
+                # IMPROVED: Use error_distance directly in reward calculation
+                reward = self._calculate_reward(predicted, actual, game_type, error_distance=error_distance)
                 
-                # Store in memory for training
-                learning_data.append((state_1d.astype(np.float32), reward))
+                # Store with priority (lower error = higher priority)
+                priority = 1.0 / (1.0 + error_distance)  # Higher priority for lower error
+                prioritized_records.append((state_1d.astype(np.float32), reward, priority, error_distance))
+            
+            # Sort by priority (lowest error first) and take top samples
+            prioritized_records.sort(key=lambda x: x[3])  # Sort by error_distance (ascending)
+            top_records = prioritized_records[:min(50, len(prioritized_records))]  # Top 50 lowest-error
+            
+            # Convert to learning data format
+            learning_data = [(state, reward) for state, reward, _, _ in top_records]
             
             if len(learning_data) < 5:
                 return  # Not enough data
@@ -408,29 +458,51 @@ class DRLAgent:
             # Ensure model is built
             if self.model is None:
                 max_number = Config.GAMES[game_type]['max_number']
-                state_size = max_number * 4
+                state_size = max_number * 4 + 2  # Updated to include error features
                 action_size = 1000
                 self.model = self._build_model(state_size, action_size)
                 self.target_model = self._build_model(state_size, action_size)
                 self.target_model.set_weights(self.model.get_weights())
             
-            # Train on accumulated learning data
-            # Use a simplified training approach: update Q-values based on rewards
+            # IMPROVED: Train with error-distance-focused learning
             states_batch = np.stack([data[0] for data in learning_data])
             rewards_batch = np.array([data[1] for data in learning_data])
+            
+            # Calculate average error distance for logging
+            avg_error = np.mean([rec[3] for rec in top_records]) if top_records else 0
             
             # Get current Q-values
             q_values = self.model.predict(states_batch, verbose=0)
             
-            # Update Q-values: use reward as target for best action (simplified approach)
-            # In a full implementation, you'd need to store actions with predictions
+            # IMPROVED: Use reward as target for best action with gradient-style update
+            # Higher reward (lower error) should increase Q-value more
             best_actions = np.argmax(q_values, axis=1)
-            q_values[range(len(learning_data)), best_actions] = rewards_batch
             
-            # Fine-tune model with new data
-            self.model.fit(states_batch, q_values, epochs=1, verbose=0, batch_size=min(16, len(learning_data)))
+            # Update Q-values: blend current Q-values with rewards
+            # This creates a smoother gradient descent-like update
+            alpha = 0.3  # Learning rate for Q-value updates (higher = more aggressive)
+            current_q_values = q_values[range(len(learning_data)), best_actions]
+            target_q_values = alpha * rewards_batch + (1 - alpha) * current_q_values
+            q_values[range(len(learning_data)), best_actions] = target_q_values
             
-            logger.info(f"DRL agent updated with {len(learning_data)} accuracy records for {game_type}")
+            # IMPROVED: Multiple epochs for better convergence (but still fast)
+            epochs = min(3, max(1, len(learning_data) // 10))  # Adaptive epochs
+            self.model.fit(
+                states_batch, q_values, 
+                epochs=epochs, 
+                verbose=0, 
+                batch_size=min(16, len(learning_data)),
+                validation_split=0.1 if len(learning_data) > 10 else 0
+            )
+            
+            # Update target model periodically for stability
+            if len(learning_data) >= 10:
+                self.target_model.set_weights(self.model.get_weights())
+            
+            logger.info(
+                f"DRL agent updated with {len(learning_data)} accuracy records for {game_type}. "
+                f"Avg error distance: {avg_error:.2f}"
+            )
             
         except Exception as e:
             logger.warning(f"Failed to learn from accuracy records: {e}")

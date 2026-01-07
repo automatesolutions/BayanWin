@@ -170,6 +170,47 @@ const _schema = i.schema({
       result_id: i.string().optional(),
       created_at: i.string(),
     }),
+    // Prediction Accuracy Entities
+    ultra_lotto_6_58_prediction_accuracy: i.entity({
+      prediction_id: i.string(),
+      result_id: i.string(),
+      error_distance: i.number(),
+      numbers_matched: i.number(),
+      distance_metrics: i.string().optional(),
+      calculated_at: i.string(),
+    }),
+    grand_lotto_6_55_prediction_accuracy: i.entity({
+      prediction_id: i.string(),
+      result_id: i.string(),
+      error_distance: i.number(),
+      numbers_matched: i.number(),
+      distance_metrics: i.string().optional(),
+      calculated_at: i.string(),
+    }),
+    super_lotto_6_49_prediction_accuracy: i.entity({
+      prediction_id: i.string(),
+      result_id: i.string(),
+      error_distance: i.number(),
+      numbers_matched: i.number(),
+      distance_metrics: i.string().optional(),
+      calculated_at: i.string(),
+    }),
+    mega_lotto_6_45_prediction_accuracy: i.entity({
+      prediction_id: i.string(),
+      result_id: i.string(),
+      error_distance: i.number(),
+      numbers_matched: i.number(),
+      distance_metrics: i.string().optional(),
+      calculated_at: i.string(),
+    }),
+    lotto_6_42_prediction_accuracy: i.entity({
+      prediction_id: i.string(),
+      result_id: i.string(),
+      error_distance: i.number(),
+      numbers_matched: i.number(),
+      distance_metrics: i.string().optional(),
+      calculated_at: i.string(),
+    }),
   },
   links: {
     $usersLinkedPrimaryUser: {
