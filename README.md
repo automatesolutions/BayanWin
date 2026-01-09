@@ -430,4 +430,14 @@ MIT License
 7. **DRL learning loop** → Agent improves through feedback
 8. **Results displayed** → Real-time updates on frontend with statistics
 
+## Contributing
+
+Contributions are welcome! If you'd like to improve this project, fix bugs, or add new features, feel free to fork the repository, make your changes, and submit a pull request. Your efforts will help make this trading application even better!
+
+If you found this project helpful or learned something new from it, you can support the development with just a cup of coffee ☕. It's always appreciated and keeps the ideas flowing!
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-blue?style=for-the-badge&logo=coffee&logoColor=white)](https://buymeacoffee.com/jonelpericon)
+
+
+
 For detailed flowchart visualization, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)
