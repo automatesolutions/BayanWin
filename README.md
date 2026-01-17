@@ -215,6 +215,41 @@ The frontend will be available at `http://localhost:5173` (Vite default port)
 
 **Note:** The frontend communicates exclusively with the backend API. No InstantDB SDK or frontend `.env` file is required.
 
+## 🚀 Deployment to Google Cloud Platform
+
+The application is deployed on **Google Cloud Run** for production use. For complete deployment documentation, see:
+
+- **[GOOGLE_CLOUD_DEPLOYMENT.md](./GOOGLE_CLOUD_DEPLOYMENT.md)** - Detailed markdown guide
+- **[GOOGLE_CLOUD_DEPLOYMENT.html](./GOOGLE_CLOUD_DEPLOYMENT.html)** - Browser-friendly HTML guide
+
+### Quick Deployment Overview
+
+**Deployed Services:**
+- **Frontend**: React app on Cloud Run (https://lof-frontend-XXXXX.run.app)
+- **Backend**: FastAPI API on Cloud Run (https://lof-backend-XXXXX.run.app)
+- **Database**: InstantDB (cloud-hosted, no deployment needed)
+
+**Deployment Process:**
+1. **Backend**: Build and deploy to Cloud Run with InstantDB credentials
+2. **Frontend**: Build with backend URL and deploy to Cloud Run
+3. **Schema**: Deploy InstantDB schema once (local `npm run dev`)
+
+**Checking Your Project ID:**
+```powershell
+# See current Google Cloud project ID
+gcloud config get-value project
+
+# List all projects
+gcloud projects list
+```
+
+**Updating Deployments:**
+- **Backend changes**: Rebuild and redeploy backend service
+- **Frontend changes**: Rebuild with backend URL and redeploy
+- **Schema changes**: Run `npm run dev` in `lof-v2-db` to sync
+
+For detailed step-by-step instructions, troubleshooting, and update procedures, see the [Google Cloud Deployment Guide](./GOOGLE_CLOUD_DEPLOYMENT.md).
+
 ## 🔧 Configuration
 
 ### Backend Environment Variables
@@ -429,5 +464,14 @@ MIT License
 6. **Accuracy calculated** → Auto-matched with results when available
 7. **DRL learning loop** → Agent improves through feedback
 8. **Results displayed** → Real-time updates on frontend with statistics
+
+## Contributing
+
+Contributions are welcome! If you'd like to improve this project, fix bugs, or add new features, feel free to fork the repository, make your changes, and submit a pull request. Your efforts will help make this trading application even better!
+
+If you found this project helpful or learned something new from it, you can support the development with just a cup of coffee ☕. It's always appreciated and keeps the ideas flowing!
+
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Support-blue?style=for-the-badge&logo=coffee&logoColor=white)](https://buymeacoffee.com/jonelpericon)
+
 
 For detailed flowchart visualization, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)

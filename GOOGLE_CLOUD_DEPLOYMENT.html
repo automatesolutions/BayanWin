@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Google Cloud Platform Deployment Guide - LOF V2</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: white;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        
+        header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 40px 20px;
+            margin: -20px -20px 30px -20px;
+            border-radius: 0;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            color: white;
+        }
+        
+        h2 {
+            font-size: 2em;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+        
+        h3 {
+            font-size: 1.5em;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            color: #764ba2;
+        }
+        
+        h4 {
+            font-size: 1.25em;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: #555;
+        }
+        
+        p {
+            margin-bottom: 15px;
+        }
+        
+        pre {
+            background-color: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+        
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #e83e8c;
+        }
+        
+        pre code {
+            background-color: transparent;
+            padding: 0;
+            color: #f8f8f2;
+        }
+        
+        ul, ol {
+            margin-left: 30px;
+            margin-bottom: 15px;
+        }
+        
+        li {
+            margin-bottom: 8px;
+        }
+        
+        a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        a:hover {
+            text-decoration: underline;
+        }
+        
+        .toc {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 30px 0;
+            border-left: 4px solid #667eea;
+        }
+        
+        .toc ul {
+            list-style-type: none;
+            margin-left: 0;
+        }
+        
+        .toc a {
+            color: #333;
+            display: block;
+            padding: 5px 0;
+        }
+        
+        .toc a:hover {
+            color: #667eea;
+        }
+        
+        .note {
+            background-color: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .warning {
+            background-color: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .success {
+            background-color: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        
+        .architecture {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            font-family: 'Consolas', 'Monaco', monospace;
+            white-space: pre;
+            overflow-x: auto;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        table th, table td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        
+        table th {
+            background-color: #667eea;
+            color: white;
+        }
+        
+        table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.85em;
+            font-weight: bold;
+        }
+        
+        .badge-success {
+            background-color: #28a745;
+            color: white;
+        }
+        
+        .badge-warning {
+            background-color: #ffc107;
+            color: #333;
+        }
+        
+        .badge-info {
+            background-color: #17a2b8;
+            color: white;
+        }
+        
+        hr {
+            border: none;
+            border-top: 2px solid #eee;
+            margin: 30px 0;
+        }
+        
+        footer {
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #eee;
+            text-align: center;
+            color: #888;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 Google Cloud Platform Deployment Guide</h1>
+            <p style="color: rgba(255,255,255,0.9); margin-top: 10px;">Complete guide for deploying LOF V2 (Lotto Prediction App) to Google Cloud Platform</p>
+        </header>
+
+        <div class="toc">
+            <h2>📋 Table of Contents</h2>
+            <ul>
+                <li><a href="#prerequisites">Prerequisites</a></li>
+                <li><a href="#project-id">How to Check Your Project ID</a></li>
+                <li><a href="#architecture">Architecture Overview</a></li>
+                <li><a href="#initial-deployment">Initial Deployment</a>
+                    <ul>
+                        <li><a href="#backend-deployment">Backend Deployment</a></li>
+                        <li><a href="#frontend-deployment">Frontend Deployment</a></li>
+                        <li><a href="#instantdb-schema">InstantDB Schema Deployment</a></li>
+                    </ul>
+                </li>
+                <li><a href="#updating-deployments">Updating Deployments</a></li>
+                <li><a href="#verification">Verification & Testing</a></li>
+                <li><a href="#troubleshooting">Troubleshooting</a></li>
+            </ul>
+        </div>
+
+        <section id="prerequisites">
+            <h2>Prerequisites</h2>
+            
+            <h3>Required Accounts & Tools</h3>
+            <ol>
+                <li><strong>Google Cloud Account</strong> with billing enabled
+                    <ul>
+                        <li>Sign up: <a href="https://cloud.google.com" target="_blank">https://cloud.google.com</a></li>
+                        <li>Enable billing: <a href="https://console.cloud.google.com/billing" target="_blank">https://console.cloud.google.com/billing</a></li>
+                    </ul>
+                </li>
+                <li><strong>Google Cloud SDK (gcloud CLI)</strong>
+                    <ul>
+                        <li>Download: <a href="https://cloud.google.com/sdk/docs/install" target="_blank">https://cloud.google.com/sdk/docs/install</a></li>
+                        <li>Verify installation: <code>gcloud --version</code></li>
+                    </ul>
+                </li>
+                <li><strong>Docker Desktop</strong> (for local frontend builds)
+                    <ul>
+                        <li>Download: <a href="https://www.docker.com/products/docker-desktop" target="_blank">https://www.docker.com/products/docker-desktop</a></li>
+                    </ul>
+                </li>
+                <li><strong>Node.js</strong> (for InstantDB schema deployment)
+                    <ul>
+                        <li>Download: <a href="https://nodejs.org" target="_blank">https://nodejs.org</a> (v18 or later)</li>
+                    </ul>
+                </li>
+                <li><strong>InstantDB Credentials</strong>
+                    <ul>
+                        <li><strong>App ID</strong>: Get from <a href="https://www.instantdb.com/dash" target="_blank">https://www.instantdb.com/dash</a></li>
+                        <li><strong>Admin Token</strong>: Dashboard → Admin → Secret</li>
+                    </ul>
+                </li>
+            </ol>
+
+            <h3>Initial Setup</h3>
+            <pre><code># 1. Login to Google Cloud
+gcloud auth login
+
+# 2. Create or select project
+gcloud projects create lof-v2 --name="LOF V2"
+# OR use existing project
+gcloud config set project YOUR_PROJECT_ID
+
+# 3. Enable required APIs
+gcloud services enable cloudbuild.googleapis.com
+gcloud services enable run.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
+
+# 4. Configure Docker authentication
+gcloud auth configure-docker</code></pre>
+        </section>
+
+        <section id="project-id">
+            <h2>How to Check Your Project ID</h2>
+            
+            <p>You'll need your Google Cloud <strong>Project ID</strong> (not Project Name) for deployment commands. Here are several ways to find it:</p>
+
+            <h3>Option 1: Using gcloud CLI (Recommended)</h3>
+            <pre><code># See current project
+gcloud config get-value project
+
+# List all your projects
+gcloud projects list</code></pre>
+
+            <h3>Option 2: Google Cloud Console (Web Interface)</h3>
+            <ol>
+                <li>Go to: <a href="https://console.cloud.google.com" target="_blank">https://console.cloud.google.com</a></li>
+                <li>Look at the top of the page - the Project ID is shown in the project selector dropdown</li>
+                <li>Or go to: <a href="https://console.cloud.google.com/cloud-resource-manager" target="_blank">https://console.cloud.google.com/cloud-resource-manager</a></li>
+            </ol>
+
+            <h3>Option 3: From Project Settings</h3>
+            <ol>
+                <li>Go to: <a href="https://console.cloud.google.com/iam-admin/settings" target="_blank">https://console.cloud.google.com/iam-admin/settings</a></li>
+                <li>The <strong>Project ID</strong> is displayed on the Project Settings page</li>
+            </ol>
+
+            <div class="warning">
+                <strong>Important Notes:</strong>
+                <ul>
+                    <li><strong>Project ID</strong> is a unique identifier (e.g., <code>bayanwin</code>, <code>lof-v2-123456</code>)</li>
+                    <li><strong>Project Name</strong> is a human-readable name (can be changed)</li>
+                    <li>Always use <strong>Project ID</strong> in commands (not Project Name)</li>
+                </ul>
+            </div>
+
+            <div class="note">
+                <strong>Example:</strong><br>
+                If your project ID is <code>bayanwin</code>, use it like this:
+                <pre><code>gcloud builds submit --tag gcr.io/bayanwin/lof-backend</code></pre>
+            </div>
+        </section>
+
+        <section id="architecture">
+            <h2>Architecture Overview</h2>
+            
+            <div class="architecture">┌─────────────────────────────────────────────────────────────┐
+│                    Google Cloud Platform                     │
+├─────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌──────────────────┐          ┌──────────────────┐         │
+│  │  Frontend        │          │  Backend         │         │
+│  │  (Cloud Run)     │─────────▶│  (Cloud Run)     │         │
+│  │  Port: 8080      │  HTTPS   │  Port: 8080      │         │
+│  │                  │          │                  │         │
+│  │  React + Nginx   │          │  FastAPI         │         │
+│  └──────────────────┘          └────────┬─────────┘         │
+│                                         │                    │
+│                                         │ REST API           │
+│                                         ▼                    │
+│                                  ┌──────────────────┐        │
+│                                  │  InstantDB       │        │
+│                                  │  (Cloud-hosted)  │        │
+│                                  │                  │        │
+│                                  │  Database API    │        │
+│                                  └──────────────────┘        │
+│                                                               │
+└─────────────────────────────────────────────────────────────┘</div>
+
+            <p><strong>Components:</strong></p>
+            <ul>
+                <li><strong>Frontend</strong>: React app served via Nginx, deployed on Cloud Run</li>
+                <li><strong>Backend</strong>: FastAPI application, deployed on Cloud Run</li>
+                <li><strong>Database</strong>: InstantDB (cloud-hosted, no deployment needed)</li>
+            </ul>
+        </section>
+
+        <section id="initial-deployment">
+            <h2>Initial Deployment</h2>
+
+            <div id="backend-deployment">
+                <h3>Backend Deployment</h3>
+
+                <h4>Step 1: Navigate to Backend Directory</h4>
+                <pre><code>cd C:\Users\jonel\OneDrive\Desktop\Jonel_Projects\LOF_V2\backend</code></pre>
+
+                <h4>Step 2: Build and Push Docker Image</h4>
+                <pre><code>gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/lof-backend</code></pre>
+                <p><strong>Replace <code>YOUR_PROJECT_ID</code></strong> with your actual Google Cloud project ID (e.g., <code>bayanwin</code>).</p>
+
+                <div class="success">
+                    <strong>Expected output:</strong>
+                    <pre>Creating temporary archive...
+Uploading tarball...
+DONE</pre>
+                </div>
+
+                <h4>Step 3: Deploy to Cloud Run</h4>
+                <pre><code>gcloud run deploy lof-backend `
+  --image gcr.io/YOUR_PROJECT_ID/lof-backend `
+  --platform managed `
+  --region us-central1 `
+  --allow-unauthenticated `
+  --port 8080 `
+  --memory 2Gi `
+  --cpu 2 `
+  --timeout 300 `
+  --set-env-vars "INSTANTDB_APP_ID=YOUR_APP_ID,INSTANTDB_ADMIN_TOKEN=YOUR_TOKEN"</code></pre>
+
+                <div class="warning">
+                    <strong>Important:</strong>
+                    <ul>
+                        <li>Replace <code>YOUR_PROJECT_ID</code> with your project ID</li>
+                        <li>Replace <code>YOUR_APP_ID</code> with your InstantDB App ID</li>
+                        <li>Replace <code>YOUR_TOKEN</code> with your InstantDB Admin Token</li>
+                        <li><strong>Do NOT</strong> include <code>PORT=8080</code> in env vars (Cloud Run sets it automatically)</li>
+                    </ul>
+                </div>
+
+                <div class="success">
+                    <strong>Expected output:</strong>
+                    <pre>Service [lof-backend] revision [...] has been deployed
+Service URL: https://lof-backend-XXXXX.run.app</pre>
+                </div>
+
+                <div class="note">
+                    <strong>Save the Service URL</strong> - you'll need it for frontend deployment!
+                </div>
+            </div>
+
+            <div id="frontend-deployment">
+                <h3>Frontend Deployment</h3>
+
+                <h4>Step 1: Navigate to Frontend Directory</h4>
+                <pre><code>cd C:\Users\jonel\OneDrive\Desktop\Jonel_Projects\LOF_V2\frontend</code></pre>
+
+                <h4>Step 2: Build Docker Image with Backend URL</h4>
+                <p><strong>Option A: Using Docker (Recommended)</strong></p>
+                <pre><code># Build with backend URL (replace with your actual backend URL from Step 3 above)
+docker build --build-arg VITE_API_URL=https://lof-backend-XXXXX.run.app -t gcr.io/YOUR_PROJECT_ID/lof-frontend .
+
+# Push to Google Container Registry
+docker push gcr.io/YOUR_PROJECT_ID/lof-frontend</code></pre>
+
+                <h4>Step 3: Deploy to Cloud Run</h4>
+                <pre><code>gcloud run deploy lof-frontend `
+  --image gcr.io/YOUR_PROJECT_ID/lof-frontend `
+  --platform managed `
+  --region us-central1 `
+  --allow-unauthenticated `
+  --port 8080</code></pre>
+
+                <div class="success">
+                    <strong>Expected output:</strong>
+                    <pre>Service [lof-frontend] revision [...] has been deployed
+Service URL: https://lof-frontend-XXXXX.run.app</pre>
+                </div>
+            </div>
+
+            <div id="instantdb-schema">
+                <h3>InstantDB Schema Deployment</h3>
+
+                <div class="warning">
+                    <strong>Important:</strong> This is a <strong>one-time</strong> operation. Run it once locally, then stop (Ctrl+C).
+                </div>
+
+                <h4>Step 1: Navigate to Schema Directory</h4>
+                <pre><code>cd C:\Users\jonel\OneDrive\Desktop\Jonel_Projects\LOF_V2\lof-v2-db</code></pre>
+
+                <h4>Step 2: Install Dependencies</h4>
+                <pre><code>npm install</code></pre>
+
+                <h4>Step 3: Deploy Schema</h4>
+                <pre><code>npm run dev</code></pre>
+
+                <p><strong>What to expect:</strong></p>
+                <ul>
+                    <li>The app will start and connect to InstantDB</li>
+                    <li>Wait for "Schema synced" or similar confirmation message</li>
+                    <li>Press <code>Ctrl+C</code> to stop (once sync is complete)</li>
+                </ul>
+
+                <p><strong>Duration:</strong> Usually 30 seconds to 2 minutes</p>
+
+                <div class="note">
+                    <strong>Note:</strong> This only needs to be run <strong>once</strong>, not every deployment!
+                </div>
+            </div>
+        </section>
+
+        <section id="updating-deployments">
+            <h2>Updating Deployments</h2>
+
+            <p>When you make code changes, follow these steps to update your deployment:</p>
+
+            <h3>Backend Updates</h3>
+            <p><strong>When to update:</strong></p>
+            <ul>
+                <li>Changed Python code (<code>.py</code> files)</li>
+                <li>Updated <code>requirements.txt</code></li>
+                <li>Modified <code>backend/Dockerfile</code></li>
+                <li>Changed environment variables</li>
+            </ul>
+
+            <p><strong>Steps:</strong></p>
+            <pre><code># 1. Navigate to backend directory
+cd C:\Users\jonel\OneDrive\Desktop\Jonel_Projects\LOF_V2\backend
+
+# 2. Rebuild and push image
+gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/lof-backend
+
+# 3. Redeploy (Cloud Run will use new image automatically)
+gcloud run deploy lof-backend `
+  --image gcr.io/YOUR_PROJECT_ID/lof-backend `
+  --platform managed `
+  --region us-central1</code></pre>
+
+            <div class="note">
+                <strong>Note:</strong> Environment variables persist - you don't need to set them again unless you want to change them.
+            </div>
+
+            <h3>Frontend Updates</h3>
+            <p><strong>When to update:</strong></p>
+            <ul>
+                <li>Changed React code (<code>.jsx</code>, <code>.js</code> files)</li>
+                <li>Updated <code>package.json</code></li>
+                <li>Modified <code>frontend/Dockerfile</code> or <code>nginx.conf</code></li>
+                <li>Backend URL changed (need to rebuild with new URL)</li>
+            </ul>
+
+            <p><strong>Steps:</strong></p>
+            <pre><code># 1. Navigate to frontend directory
+cd C:\Users\jonel\OneDrive\Desktop\Jonel_Projects\LOF_V2\frontend
+
+# 2. Rebuild Docker image (use same backend URL as before)
+docker build --build-arg VITE_API_URL=https://lof-backend-XXXXX.run.app -t gcr.io/YOUR_PROJECT_ID/lof-frontend .
+
+# 3. Push updated image
+docker push gcr.io/YOUR_PROJECT_ID/lof-frontend
+
+# 4. Redeploy
+gcloud run deploy lof-frontend `
+  --image gcr.io/YOUR_PROJECT_ID/lof-frontend `
+  --platform managed `
+  --region us-central1</code></pre>
+
+            <div class="warning">
+                <strong>Important:</strong> If your backend URL changed, use the new URL in the <code>--build-arg VITE_API_URL=...</code> command.
+            </div>
+
+            <h3>Updating Environment Variables (Backend)</h3>
+            <p><strong>When to update:</strong></p>
+            <ul>
+                <li>Changed InstantDB credentials</li>
+                <li>Need to update other config values</li>
+            </ul>
+
+            <p><strong>Steps:</strong></p>
+            <pre><code># Update environment variables without rebuilding
+gcloud run services update lof-backend `
+  --set-env-vars "INSTANTDB_APP_ID=NEW_APP_ID,INSTANTDB_ADMIN_TOKEN=NEW_TOKEN" `
+  --region us-central1</code></pre>
+
+            <p><strong>Or via Cloud Console:</strong></p>
+            <ol>
+                <li>Go to <a href="https://console.cloud.google.com/run" target="_blank">https://console.cloud.google.com/run</a></li>
+                <li>Click on <code>lof-backend</code> service</li>
+                <li>Click "Edit & Deploy New Revision"</li>
+                <li>Go to "Variables & Secrets"</li>
+                <li>Update values and click "Deploy"</li>
+            </ol>
+
+            <h3>Updating InstantDB Schema</h3>
+            <p><strong>When to update:</strong></p>
+            <ul>
+                <li>Modified <code>lof-v2-db/src/instant.schema.ts</code></li>
+                <li>Added/removed entities</li>
+            </ul>
+
+            <p><strong>Steps:</strong></p>
+            <pre><code># 1. Navigate to schema directory
+cd C:\Users\jonel\OneDrive\Desktop\Jonel_Projects\LOF_V2\lof-v2-db
+
+# 2. Run schema sync again
+npm run dev
+
+# 3. Wait for sync confirmation, then Ctrl+C</code></pre>
+
+            <div class="note">
+                <strong>Note:</strong> InstantDB will merge your schema changes. No backend restart needed!
+            </div>
+        </section>
+
+        <section id="verification">
+            <h2>Verification & Testing</h2>
+
+            <h3>Check Deployment Status</h3>
+            <pre><code># List all Cloud Run services
+gcloud run services list
+
+# Get detailed info about a service
+gcloud run services describe lof-backend --region us-central1
+gcloud run services describe lof-frontend --region us-central1</code></pre>
+
+            <h3>Test Your Deployment</h3>
+            <ol>
+                <li><strong>Frontend</strong>
+                    <ul>
+                        <li>Open: <code>https://lof-frontend-XXXXX.run.app</code></li>
+                        <li>Should load the React application</li>
+                    </ul>
+                </li>
+                <li><strong>Backend Health Check</strong>
+                    <ul>
+                        <li>Open: <code>https://lof-backend-XXXXX.run.app/health</code></li>
+                        <li>Should return: <code>{"status":"healthy"}</code></li>
+                    </ul>
+                </li>
+                <li><strong>Backend API Documentation</strong>
+                    <ul>
+                        <li>Open: <code>https://lof-backend-XXXXX.run.app/docs</code></li>
+                        <li>Should show Swagger UI</li>
+                    </ul>
+                </li>
+                <li><strong>Frontend → Backend Connection</strong>
+                    <ul>
+                        <li>Use the frontend UI to make API calls</li>
+                        <li>Check browser console for any connection errors</li>
+                    </ul>
+                </li>
+            </ol>
+        </section>
+
+        <section id="troubleshooting">
+            <h2>Troubleshooting</h2>
+
+            <h3>Backend Won't Start</h3>
+            <p><strong>Problem:</strong> Service fails to deploy or crashes</p>
+            <p><strong>Solutions:</strong></p>
+            <pre><code># Check logs
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=lof-backend" --limit 50
+
+# Verify environment variables
+gcloud run services describe lof-backend --region us-central1 --format="value(spec.template.spec.containers[0].env)"</code></pre>
+            <p><strong>Common issues:</strong></p>
+            <ul>
+                <li>Missing <code>INSTANTDB_APP_ID</code> or <code>INSTANTDB_ADMIN_TOKEN</code></li>
+                <li>Port mismatch (should be 8080)</li>
+                <li>Memory too low (increase with <code>--memory 4Gi</code>)</li>
+            </ul>
+
+            <h3>Frontend Can't Connect to Backend</h3>
+            <p><strong>Problem:</strong> Frontend shows API errors</p>
+            <p><strong>Solutions:</strong></p>
+            <ol>
+                <li><strong>Verify backend URL in frontend build:</strong>
+                    <ul>
+                        <li>Check that <code>VITE_API_URL</code> was set correctly during build</li>
+                        <li>Rebuild frontend if URL changed</li>
+                    </ul>
+                </li>
+                <li><strong>Check CORS settings:</strong>
+                    <ul>
+                        <li>Backend should have <code>allow_origins=["*"]</code> in <code>app.py</code></li>
+                    </ul>
+                </li>
+                <li><strong>Verify backend is running:</strong>
+                    <pre><code>gcloud run services list</code></pre>
+                </li>
+            </ol>
+
+            <h3>Port Configuration Issues</h3>
+            <p><strong>Problem:</strong> Container failed to start - port misconfiguration</p>
+            <p><strong>Solutions:</strong></p>
+            <ul>
+                <li>Backend: Ensure Dockerfile uses <code>${PORT:-8000}</code> and Cloud Run uses <code>--port 8080</code></li>
+                <li>Frontend: Ensure <code>nginx.conf</code> has <code>listen 8080;</code> and Cloud Run uses <code>--port 8080</code></li>
+            </ul>
+
+            <h3>Docker Push Authentication Errors</h3>
+            <p><strong>Problem:</strong> <code>error getting credentials</code> when pushing</p>
+            <p><strong>Solution:</strong></p>
+            <pre><code># Re-authenticate Docker
+gcloud auth configure-docker</code></pre>
+        </section>
+
+        <section>
+            <h2>Quick Reference Commands</h2>
+
+            <h3>Deployment Commands</h3>
+            <pre><code># Backend
+cd backend
+gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/lof-backend
+gcloud run deploy lof-backend --image gcr.io/YOUR_PROJECT_ID/lof-backend --platform managed --region us-central1 --allow-unauthenticated --port 8080 --memory 2Gi --cpu 2 --timeout 300 --set-env-vars "INSTANTDB_APP_ID=XXX,INSTANTDB_ADMIN_TOKEN=XXX"
+
+# Frontend
+cd frontend
+docker build --build-arg VITE_API_URL=https://BACKEND_URL.run.app -t gcr.io/YOUR_PROJECT_ID/lof-frontend .
+docker push gcr.io/YOUR_PROJECT_ID/lof-frontend
+gcloud run deploy lof-frontend --image gcr.io/YOUR_PROJECT_ID/lof-frontend --platform managed --region us-central1 --allow-unauthenticated --port 8080
+
+# Schema (one-time)
+cd lof-v2-db
+npm install
+npm run dev  # Then Ctrl+C when done</code></pre>
+
+            <h3>Update Commands</h3>
+            <pre><code># Update backend
+cd backend
+gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/lof-backend
+gcloud run deploy lof-backend --image gcr.io/YOUR_PROJECT_ID/lof-backend --region us-central1
+
+# Update frontend
+cd frontend
+docker build --build-arg VITE_API_URL=https://BACKEND_URL.run.app -t gcr.io/YOUR_PROJECT_ID/lof-frontend .
+docker push gcr.io/YOUR_PROJECT_ID/lof-frontend
+gcloud run deploy lof-frontend --image gcr.io/YOUR_PROJECT_ID/lof-frontend --region us-central1
+
+# Update env vars only
+gcloud run services update lof-backend --set-env-vars "KEY=value" --region us-central1</code></pre>
+        </section>
+
+        <section>
+            <h2>Cost Estimation</h2>
+            <p><strong>Free Tier (First 90 days):</strong></p>
+            <ul>
+                <li>$300 free credits</li>
+                <li>Cloud Run: 2 million requests/month free</li>
+                <li>Cloud Build: 120 build-minutes/day free</li>
+            </ul>
+
+            <p><strong>After Free Tier:</strong></p>
+            <ul>
+                <li>Cloud Run: ~$0.40 per million requests</li>
+                <li>Cloud Build: ~$0.003 per build-minute</li>
+                <li>Storage: ~$0.026 per GB/month</li>
+            </ul>
+
+            <p><strong>Estimated monthly cost for small app:</strong> $5-15/month</p>
+        </section>
+
+        <section>
+            <h2>Support & Resources</h2>
+            <ul>
+                <li><strong>Google Cloud Console</strong>: <a href="https://console.cloud.google.com" target="_blank">https://console.cloud.google.com</a></li>
+                <li><strong>Cloud Run Documentation</strong>: <a href="https://cloud.google.com/run/docs" target="_blank">https://cloud.google.com/run/docs</a></li>
+                <li><strong>InstantDB Documentation</strong>: <a href="https://www.instantdb.com/docs" target="_blank">https://www.instantdb.com/docs</a></li>
+                <li><strong>Check Service Logs</strong>: <a href="https://console.cloud.google.com/logs" target="_blank">https://console.cloud.google.com/logs</a></li>
+            </ul>
+        </section>
+
+        <footer>
+            <hr>
+            <p><strong>Last Updated:</strong> January 2025</p>
+            <p><strong>Project:</strong> LOF V2 - Lotto Prediction Application</p>
+            <p><strong>Deployment Platform:</strong> Google Cloud Platform (Cloud Run)</p>
+        </footer>
+    </div>
+</body>
+</html>

@@ -1,0 +1,38 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: lof-backend
+    ports:
+      - "5000:8000"
+    environment:
+      - INSTANTDB_APP_ID=${INSTANTDB_APP_ID}
+      - INSTANTDB_ADMIN_TOKEN=${INSTANTDB_ADMIN_TOKEN}
+      - GOOGLE_SERVICE_ACCOUNT_FILE=${GOOGLE_SERVICE_ACCOUNT_FILE:-}
+      - DEBUG=${DEBUG:-False}
+      - PORT=8000
+    volumes:
+      - ./backend:/app
+    restart: unless-stopped
+    networks:
+      - lof-network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=${VITE_API_URL:-http://localhost:5000}
+    container_name: lof-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - lof-network
+
+networks:
+  lof-network:
+    driver: bridge
