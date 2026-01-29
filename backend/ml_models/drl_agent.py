@@ -48,15 +48,15 @@ class DRLAgent:
         
         return model
     
-    def _get_state(self, game_type: str, recent_error_distance: float = None) -> np.ndarray:
+    def _get_state(self, game_type: str, recent_error_distance: float = None, error_history: List[float] = None) -> np.ndarray:
         """
-        Get current state representation with IMPROVED error distance awareness.
+        Get current state representation with ENHANCED error distance awareness.
         
         State includes:
         - Historical draws (encoded)
         - Frequency stats
         - Hot/cold/overdue numbers
-        - Recent error distance history (NEW)
+        - Error distance history with trend analysis (ENHANCED)
         """
         df = get_historical_data(game_type, limit=10)
         max_number = Config.GAMES[game_type]['max_number']
@@ -100,14 +100,45 @@ class DRLAgent:
         else:
             recent_vector = np.zeros(max_number)
         
-        # IMPROVED: Add error distance features to state
-        # Normalize error distance (0-1 range)
+        # ENHANCED: Add error distance features with trend analysis
+        max_error = 200  # Approximate max
         if recent_error_distance is not None:
-            max_error = 200  # Approximate max
             normalized_error = min(recent_error_distance / max_error, 1.0)
-            error_features = np.array([normalized_error, 1.0 - normalized_error])  # [error, inverse]
+            
+            # Calculate error trend if history is available
+            if error_history and len(error_history) >= 3:
+                recent_errors = error_history[-5:]  # Last 5 errors
+                avg_recent_error = np.mean(recent_errors)
+                error_variance = np.var(recent_errors) if len(recent_errors) > 1 else 0.0
+                
+                # Trend: positive = improving (errors decreasing), negative = worsening
+                if len(recent_errors) >= 2:
+                    trend = (recent_errors[-2] - recent_errors[-1]) / max_error  # Normalized trend
+                else:
+                    trend = 0.0
+                
+                # Normalize variance
+                normalized_variance = min(error_variance / (max_error ** 2), 1.0)
+                normalized_avg = min(avg_recent_error / max_error, 1.0)
+                
+                error_features = np.array([
+                    normalized_error,           # Current error
+                    1.0 - normalized_error,     # Inverse current error
+                    normalized_avg,             # Recent average error
+                    normalized_variance,        # Error variance (consistency)
+                    trend                       # Error trend (improving/worsening)
+                ])
+            else:
+                # Fallback: just current error if no history
+                error_features = np.array([
+                    normalized_error,
+                    1.0 - normalized_error,
+                    0.5,  # Unknown average
+                    0.5,  # Unknown variance
+                    0.0   # Unknown trend
+                ])
         else:
-            error_features = np.array([0.5, 0.5])  # Neutral if unknown
+            error_features = np.array([0.5, 0.5, 0.5, 0.5, 0.0])  # Neutral if unknown
         
         # Combine state features
         state = np.concatenate([
@@ -115,7 +146,7 @@ class DRLAgent:
             cold_vector,
             overdue_vector,
             recent_vector,
-            error_features  # NEW: Error distance awareness
+            error_features  # ENHANCED: Error distance with trend awareness
         ])
         
         return state
@@ -170,9 +201,10 @@ class DRLAgent:
             max_possible_error = 200  # Approximate max for 6/58 lottery
             normalized_error = euclidean_dist / max_possible_error
             
-            # Primary reward: inverse error distance (stronger signal)
-            # Scale: 0-100 reward range
-            error_reward = 100.0 / (1.0 + normalized_error * 10)
+            # ENHANCED: Stronger error reward with better gradient
+            # Scale: 0-200 reward range (doubled for stronger signal)
+            # Reduced multiplier from 10 to 5 for steeper gradient
+            error_reward = 200.0 / (1.0 + normalized_error * 5)
             
             # Bonus for matches (secondary signal)
             match_bonus = matches * 15  # Increased from 10 to 15
@@ -241,8 +273,9 @@ class DRLAgent:
         # Prefer hot and overdue numbers, avoid too many cold numbers
         reward_c = hot_matches * 5 + overdue_matches * 3 - cold_matches * 2
         
-        # Combined reward
-        total_reward = reward_a + reward_b + reward_c
+        # ENHANCED: Weighted combination - Error distance is 85% of reward
+        # This makes error distance the dominant learning signal
+        total_reward = reward_a * 0.85 + reward_b * 0.10 + reward_c * 0.05
         
         return total_reward
     
@@ -260,7 +293,7 @@ class DRLAgent:
             raise ValueError("Insufficient historical data for DRL training")
         
         max_number = Config.GAMES[game_type]['max_number']
-        state_size = max_number * 4 + 2  # hot, cold, overdue, recent vectors + error features (NEW)
+        state_size = max_number * 4 + 5  # hot, cold, overdue, recent vectors + error features (ENHANCED: 5 features)
         action_size = 1000  # Action space size
         
         # Build models
@@ -394,11 +427,18 @@ class DRLAgent:
             drl_predictions = {p.get('id'): p for p in predictions if p.get('model_type') == 'DRL'}
             
             # Build training data from accuracy records (only for DRL predictions)
-            # IMPROVED: Prioritize low-error predictions for better learning
+            # ENHANCED: Use all records with weighted sampling based on error
             learning_data = []
             prioritized_records = []
             
-            for acc_record in accuracy_records[-100:]:  # Use last 100 records (increased from 50)
+            # Collect error history for trend analysis
+            error_history = []
+            for acc_record in accuracy_records[-100:]:  # Use last 100 records
+                error_dist = acc_record.get('error_distance')
+                if error_dist is not None:
+                    error_history.append(float(error_dist))
+            
+            for acc_record in accuracy_records[-100:]:  # Use last 100 records
                 prediction_id = acc_record.get('prediction_id')
                 
                 # Only learn from DRL predictions
@@ -414,7 +454,7 @@ class DRLAgent:
                 if not result:
                     continue
                 
-                # Get error_distance directly from accuracy record (IMPROVED)
+                # Get error_distance directly from accuracy record
                 error_distance = acc_record.get('error_distance')
                 if error_distance is None:
                     continue  # Skip if no error distance
@@ -434,23 +474,56 @@ class DRLAgent:
                     result.get('number_5'), result.get('number_6')
                 ]
                 
-                # IMPROVED: Get state with error distance awareness
-                state = self._get_state(game_type, recent_error_distance=error_distance)
+                # ENHANCED: Get state with error distance and trend awareness
+                state = self._get_state(game_type, recent_error_distance=error_distance, error_history=error_history)
                 state_1d = np.array(state).flatten()
                 
-                # IMPROVED: Use error_distance directly in reward calculation
+                # Use error_distance directly in reward calculation
                 reward = self._calculate_reward(predicted, actual, game_type, error_distance=error_distance)
                 
-                # Store with priority (lower error = higher priority)
-                priority = 1.0 / (1.0 + error_distance)  # Higher priority for lower error
-                prioritized_records.append((state_1d.astype(np.float32), reward, priority, error_distance))
+                # ENHANCED: Weight by inverse error (lower error = higher weight)
+                # This allows learning from all examples, not just top 50
+                weight = 1.0 / (1.0 + error_distance)
+                prioritized_records.append((state_1d.astype(np.float32), reward, weight, error_distance))
             
-            # Sort by priority (lowest error first) and take top samples
-            prioritized_records.sort(key=lambda x: x[3])  # Sort by error_distance (ascending)
-            top_records = prioritized_records[:min(50, len(prioritized_records))]  # Top 50 lowest-error
+            # ENHANCED: Use weighted sampling instead of just top 50
+            # Sort by error (ascending) for better organization
+            prioritized_records.sort(key=lambda x: x[3])  # Sort by error_distance
+            
+            # Use all records but weight them by error (inverse relationship)
+            # Lower error records get higher weight in training
+            if len(prioritized_records) > 0:
+                weights = np.array([rec[2] for rec in prioritized_records])
+                weights = weights / weights.sum()  # Normalize weights
+                
+                # Sample records based on weights (prefer low-error but include all)
+                # Use at least 50 records, or all if less than 50
+                n_samples = min(max(50, len(prioritized_records)), len(prioritized_records))
+                if len(prioritized_records) <= 50:
+                    # Use all records
+                    selected_records = prioritized_records
+                else:
+                    # Weighted sampling: prefer low-error records but include variety
+                    # Take top 30 low-error + sample 20 more based on weights
+                    top_low_error = prioritized_records[:30]
+                    remaining = prioritized_records[30:]
+                    if len(remaining) > 0:
+                        remaining_weights = weights[30:] / weights[30:].sum()
+                        sampled_indices = np.random.choice(
+                            len(remaining),
+                            size=min(20, len(remaining)),
+                            replace=False,
+                            p=remaining_weights
+                        )
+                        sampled_remaining = [remaining[i] for i in sampled_indices]
+                        selected_records = top_low_error + sampled_remaining
+                    else:
+                        selected_records = top_low_error
+            else:
+                selected_records = []
             
             # Convert to learning data format
-            learning_data = [(state, reward) for state, reward, _, _ in top_records]
+            learning_data = [(state, reward) for state, reward, _, _ in selected_records]
             
             if len(learning_data) < 5:
                 return  # Not enough data
@@ -458,29 +531,39 @@ class DRLAgent:
             # Ensure model is built
             if self.model is None:
                 max_number = Config.GAMES[game_type]['max_number']
-                state_size = max_number * 4 + 2  # Updated to include error features
+                state_size = max_number * 4 + 5  # ENHANCED: Updated to include error trend features (5 features)
                 action_size = 1000
                 self.model = self._build_model(state_size, action_size)
                 self.target_model = self._build_model(state_size, action_size)
                 self.target_model.set_weights(self.model.get_weights())
             
-            # IMPROVED: Train with error-distance-focused learning
+            # ENHANCED: Train with error-distance-focused learning
             states_batch = np.stack([data[0] for data in learning_data])
             rewards_batch = np.array([data[1] for data in learning_data])
             
-            # Calculate average error distance for logging
-            avg_error = np.mean([rec[3] for rec in top_records]) if top_records else 0
+            # Calculate average error distance for logging and adaptive learning
+            avg_error = np.mean([rec[3] for rec in selected_records]) if selected_records else 0
             
             # Get current Q-values
             q_values = self.model.predict(states_batch, verbose=0)
             
-            # IMPROVED: Use reward as target for best action with gradient-style update
+            # ENHANCED: Use reward as target for best action with gradient-style update
             # Higher reward (lower error) should increase Q-value more
             best_actions = np.argmax(q_values, axis=1)
             
-            # Update Q-values: blend current Q-values with rewards
-            # This creates a smoother gradient descent-like update
-            alpha = 0.3  # Learning rate for Q-value updates (higher = more aggressive)
+            # ENHANCED: Adaptive learning rate based on error level
+            # Higher errors = more aggressive learning (higher alpha)
+            # Lower errors = more conservative learning (lower alpha)
+            base_alpha = 0.3
+            max_alpha = 0.7
+            if avg_error > 0:
+                # Scale alpha from 0.3 to 0.7 based on error level
+                # High errors (100+) get alpha ~0.7, low errors (20-) get alpha ~0.3
+                error_factor = min(avg_error / 200.0, 1.0)  # Normalize to 0-1
+                alpha = base_alpha + (max_alpha - base_alpha) * error_factor
+            else:
+                alpha = base_alpha
+            
             current_q_values = q_values[range(len(learning_data)), best_actions]
             target_q_values = alpha * rewards_batch + (1 - alpha) * current_q_values
             q_values[range(len(learning_data)), best_actions] = target_q_values
@@ -501,7 +584,7 @@ class DRLAgent:
             
             logger.info(
                 f"DRL agent updated with {len(learning_data)} accuracy records for {game_type}. "
-                f"Avg error distance: {avg_error:.2f}"
+                f"Avg error distance: {avg_error:.2f}, Learning rate (alpha): {alpha:.3f}"
             )
             
         except Exception as e:
