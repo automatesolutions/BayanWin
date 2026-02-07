@@ -410,7 +410,7 @@
                         <text x="650" y="885" text-anchor="middle" fill="white" font-size="12">~1-3 sec</text>
 
                         <rect x="800" y="820" width="200" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
-                        <text x="900" y="845" text-anchor="middle" fill="white" font-size="13" font-weight="bold">4. Normal Dist.</text>
+                        <text x="900" y="845" text-anchor="middle" fill="white" font-size="13" font-weight="bold">4. Anomaly Detect.</text>
                         <text x="900" y="865" text-anchor="middle" fill="white" font-size="12">Gaussian Analysis</text>
                         <text x="900" y="885" text-anchor="middle" fill="white" font-size="12">~0.1-0.5 sec</text>
 
@@ -500,6 +500,44 @@
                         <li><strong>DRL Learning Loop:</strong> DRL agent receives feedback from accuracy calculations to improve future predictions</li>
                     </ol>
                 </div>
+
+                <h3>Stage-by-stage workflow (with code references)</h3>
+                <p>Each stage maps to the actual code so you can trace requests end-to-end.</p>
+
+                <h4>Stage 1: User selects a game → Auto-scrape</h4>
+                <ul>
+                    <li><strong>Frontend:</strong> <code>frontend/src/App.jsx</code> — <code>handleGameSelect(gameType)</code> runs when the user picks a game. It calls <code>scrapeData({ game_type: gameType })</code> from <code>frontend/src/services/api.js</code>.</li>
+                    <li><strong>API call:</strong> <code>api.js</code> uses Axios with <code>API_BASE_URL</code> from <code>frontend/src/utils/constants.js</code> (default <code>http://localhost:5000</code>). Request: <code>POST /api/scrape</code> with body <code>{ game_type: "…" }</code>.</li>
+                    <li><strong>Backend:</strong> <code>backend/app.py</code> — <code>@app.post("/api/scrape")</code> (around line 454). It creates <code>GoogleSheetsScraper()</code> from <code>backend/scrapers/google_sheets_scraper.py</code>, then <code>scraper.scrape_game(request.game_type)</code> or <code>scraper.scrape_all_games()</code>. Data is written via <code>backend/services/instantdb_client.py</code> (writes often use Node.js scripts in <code>backend/scripts/</code>, e.g. <code>save_results.js</code>).</li>
+                    <li><strong>After scrape:</strong> If new results were added, the backend runs <code>auto_calculate_accuracy_for_new_results()</code> and may trigger DRL learning. Response (<code>success</code>, <code>stats</code>, <code>message</code>) is returned to the frontend.</li>
+                </ul>
+
+                <h4>Stage 2: User clicks “Generate Predictions”</h4>
+                <ul>
+                    <li><strong>Frontend:</strong> <code>App.jsx</code> — <code>handleGeneratePredictions()</code> calls <code>generatePredictions(selectedGame)</code> → <code>POST /api/predict/{game_type}</code>.</li>
+                    <li><strong>Backend:</strong> <code>app.py</code> — <code>@app.post("/api/predict/{game_type}")</code> (around line 580). Iterates over the five models in <code>model_types</code> (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, DRL). Each runs <code>model_instance.predict(game_type)</code> in a <code>ThreadPoolExecutor</code> (60s or 120s timeout). Historical data comes from <code>get_historical_data()</code> in <code>backend/utils/data_processor.py</code>, which reads from InstantDB via the <code>instantdb</code> client.</li>
+                    <li><strong>Saving:</strong> Each prediction is stored with <code>instantdb.create_prediction(game_type, prediction_data)</code> (Node.js Admin SDK bridge). A background thread then runs <code>auto_calculate_accuracy_for_new_results(game_type)</code>.</li>
+                    <li><strong>Response:</strong> Returns <code>{ success, game_type, target_draw_date, predictions, timestamp }</code>. Frontend stores <code>response.data.predictions</code> and shows them in <code>PredictionDisplay</code>.</li>
+                </ul>
+
+                <h4>Stage 3: Viewing results, stats, and accuracy</h4>
+                <ul>
+                    <li><strong>Historical results:</strong> <code>HistoricalResults</code> → <code>getResults(gameType, page, limit)</code> → <code>GET /api/results/{game_type}</code>. Backend: <code>@app.get("/api/results/{game_type}")</code> (line ~96) uses <code>instantdb.get_results(...)</code>.</li>
+                    <li><strong>Statistics:</strong> <code>StatisticsPanel</code> → <code>getStatistics(gameType)</code> → <code>GET /api/stats/{game_type}</code>. Backend uses <code>utils/frequency_analysis.py</code> (e.g. <code>get_hot_numbers</code>, <code>get_cold_numbers</code>, <code>get_overdue_numbers</code>).</li>
+                    <li><strong>Error distance:</strong> <code>ErrorDistanceAnalysis</code> → <code>getPredictionAccuracy(gameType)</code> → <code>GET /api/predictions/{game_type}/accuracy</code>. Backend uses <code>instantdb.get_prediction_accuracy()</code> and <code>utils/error_distance_calculator.py</code>.</li>
+                    <li><strong>Gaussian:</strong> <code>getGaussianDistribution(gameType)</code> → <code>GET /api/stats/{game_type}/gaussian</code>; backend returns sum/product data for the scatter plot.</li>
+                </ul>
+
+                <h3>CORS middleware and frontend–backend connection</h3>
+                <p><strong>Why CORS matters:</strong> The React app runs at <code>http://localhost:3000</code> and the API at <code>http://localhost:5000</code>. Browsers enforce the same-origin policy; a request from the frontend to the backend is cross-origin, so the backend must send CORS headers for the browser to accept the response.</p>
+                <p><strong>Backend CORS (FastAPI):</strong> In <code>backend/app.py</code>, right after creating the FastAPI app (lines 50–56), the app adds <code>CORSMiddleware</code>:</p>
+                <ul>
+                    <li><code>allow_origins=["*"]</code> — any origin (e.g. <code>http://localhost:3000</code>) can call the API. In production you should restrict this to your frontend origin(s).</li>
+                    <li><code>allow_credentials=True</code> — allows cookies/credentials if used later.</li>
+                    <li><code>allow_methods=["*"]</code> and <code>allow_headers=["*"]</code> — all usual HTTP methods and headers are allowed.</li>
+                </ul>
+                <p>Every response from FastAPI therefore includes CORS headers that tell the browser the cross-origin response is allowed.</p>
+                <p><strong>Development proxy:</strong> In <code>frontend/vite.config.js</code>, requests to path <code>/api</code> are proxied to <code>http://localhost:5000</code>. When using this proxy, the browser only talks to the Vite server (same origin); Vite forwards <code>/api/*</code> to the backend, so CORS is less visible. If the frontend is configured to call <code>http://localhost:5000</code> directly (e.g. <code>API_BASE_URL = 'http://localhost:5000'</code> in <code>constants.js</code>), then the backend CORS middleware is what allows those cross-origin requests to succeed.</p>
             </section>
 
             <!-- ML Models Section -->
@@ -532,9 +570,9 @@
                     </div>
 
                     <div class="model-card green">
-                        <h4>4. Normal Distribution Model</h4>
-                        <p><strong>Type:</strong> Gaussian Distribution Analysis</p>
-                        <p><strong>Approach:</strong> Analyzes sum and product distributions of winning numbers, selecting numbers that fit high-probability Gaussian patterns.</p>
+                        <h4>4. Anomaly Detection Model</h4>
+                        <p><strong>Type:</strong> Gaussian (Sum/Product) Distribution Analysis</p>
+                        <p><strong>Approach:</strong> Uses sum and product of drawn numbers; fits Gaussian mixture model to select numbers in high-probability regions (AnomalyDetection in code).</p>
                         <p><strong>Performance:</strong> ~0.1-0.5 seconds per prediction</p>
                     </div>
 
@@ -677,9 +715,14 @@
                     <li><code>GET /api/stats/{game_type}/gaussian</code> - Get Gaussian distribution analysis</li>
                 </ul>
 
+                <h3>Accuracy Diagnostics</h3>
+                <ul>
+                    <li><code>GET /api/accuracy/diagnostics/{game_type}</code> - Get diagnostic info (result/prediction/accuracy counts, date ranges, matching status) for debugging</li>
+                </ul>
+
                 <h3>System</h3>
                 <ul>
-                    <li><code>GET /health</code> - API health check</li>
+                    <li><code>GET /api/health</code> - API health check</li>
                 </ul>
             </section>
 
@@ -699,6 +742,11 @@
                     <li><strong>Concurrent Processing:</strong> ML models run with timeout protection</li>
                     <li><strong>Background Tasks:</strong> Auto-calculation of accuracy runs asynchronously</li>
                 </ul>
+
+                <h3>Development Ports</h3>
+                <p>
+                    Backend runs at <code>http://localhost:5000</code> (Uvicorn). Frontend runs at <code>http://localhost:3000</code> (Vite; port set in <code>vite.config.js</code>) and proxies <code>/api</code> to the backend.
+                </p>
 
                 <h3>Frontend Architecture</h3>
                 <p>
@@ -753,9 +801,9 @@
                         <td>Lightweight state transitions</td>
                     </tr>
                     <tr>
-                        <td>Normal Distribution Prediction</td>
+                        <td>Anomaly Detection Prediction</td>
                         <td>0.1-0.5 seconds</td>
-                        <td>Fastest model</td>
+                        <td>Fastest model (Gaussian sum/product)</td>
                     </tr>
                     <tr>
                         <td>DRL Agent Prediction</td>

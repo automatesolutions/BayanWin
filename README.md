@@ -35,7 +35,7 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
   - **XGBoost**: Gradient boosting model using historical patterns (~6-10 seconds)
   - **Decision Tree**: Random Forest classifier based on frequency analysis (~4-6 seconds)
   - **Markov Chain**: State transition model for sequence prediction (~1-3 seconds)
-  - **Normal Distribution**: Gaussian distribution analysis - highest probability patterns (~0.1-0.5 seconds)
+  - **Anomaly Detection**: Gaussian (sum/product) distribution analysis for highest-probability patterns (~0.1-0.5 seconds)
   - **Deep Reinforcement Learning (DRL)**: DRL agent with 3 feedback loops, continuously improves through accuracy feedback (~20-40 seconds, 5 episodes)
 
 - **Smart Model Training**: 
@@ -211,7 +211,7 @@ npm install
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:5173` (Vite default port)
+The frontend will be available at `http://localhost:3000` (port set in `vite.config.js`)
 
 **Note:** The frontend communicates exclusively with the backend API. No InstantDB SDK or frontend `.env` file is required.
 
@@ -304,8 +304,11 @@ The `.env` file in the `backend` directory should contain:
 - `GET /api/stats/{game_type}/gaussian` - Get Gaussian distribution analysis
   - Returns: sum/product distributions, statistics, winners data for scatter plot visualization
 
+### Accuracy Diagnostics
+- `GET /api/accuracy/diagnostics/{game_type}` - Get diagnostic info (results/predictions/accuracy counts, date ranges, matching status) for debugging
+
 ### Health Check
-- `GET /health` - API health check
+- `GET /api/health` - API health check
 
 **Full API Documentation:** Visit `http://localhost:5000/docs` when backend is running
 
@@ -316,7 +319,7 @@ The `.env` file in the `backend` directory should contain:
 1. **Deploy InstantDB schema** (run `npm run dev` in `lof-v2-db` directory)
 2. **Start the backend server** (port 5000)
 3. **Start the frontend development server** (port 5173)
-4. **Open browser** to `http://localhost:5173`
+4. **Open browser** to `http://localhost:3000`
 
 ### Workflow
 
@@ -345,6 +348,41 @@ The `.env` file in the `backend` directory should contain:
    - DRL agent receives feedback from accuracy calculations
    - Continuously improves predictions based on error metrics
    - Learning happens automatically when accuracy records are available
+
+## Stage-by-stage workflow (with code)
+
+Each stage below maps to the actual code paths so you can trace requests end-to-end.
+
+### Stage 1: User selects a game → Auto-scrape
+
+- **Frontend:** In `frontend/src/App.jsx`, `handleGameSelect(gameType)` runs when the user picks a game. It sets `selectedGame`, then calls `scrapeData({ game_type: gameType })` from `frontend/src/services/api.js`.
+- **API call:** `api.js` uses Axios with `baseURL: API_BASE_URL` (from `frontend/src/utils/constants.js`, default `http://localhost:5000`). So the request is `POST /api/scrape` with body `{ game_type: "ultra_lotto_6_58" }` (or the chosen game).
+- **Backend:** In `backend/app.py`, the route `@app.post("/api/scrape")` (around line 454) receives the request. It builds a `GoogleSheetsScraper()` (from `backend/scrapers/google_sheets_scraper.py`), then calls `scraper.scrape_game(request.game_type)` or `scraper.scrape_all_games()`. Scraped rows are validated and sent to InstantDB via `backend/services/instantdb_client.py` (writes often go through Node.js bridge scripts in `backend/scripts/`, e.g. `save_results.js`).
+- **After scrape:** If new results were added, the backend calls `auto_calculate_accuracy_for_new_results()` and may trigger DRL learning from new accuracy records. The response (e.g. `success`, `stats`, `message`) is returned to the frontend.
+
+### Stage 2: User clicks “Generate Predictions”
+
+- **Frontend:** In `App.jsx`, `handleGeneratePredictions()` calls `generatePredictions(selectedGame)` from `api.js`, which sends `POST /api/predict/{game_type}` to the backend.
+- **Backend:** In `app.py`, `@app.post("/api/predict/{game_type}")` (around line 580) runs. It looks up the game in `Config.GAMES` (from `backend/config.py`), then iterates over the five models (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, DRL) defined in `model_types`. For each model it runs `model_instance.predict(game_type)` in a `ThreadPoolExecutor` (with a 60s or 120s timeout). Historical data is loaded via `get_historical_data()` in `backend/utils/data_processor.py`, which reads from InstantDB through the same `instantdb` client.
+- **Saving predictions:** Each successful prediction is stored with `instantdb.create_prediction(game_type, prediction_data)` (which may use the Node.js Admin SDK bridge). After all models finish, a background thread runs `auto_calculate_accuracy_for_new_results(game_type)`.
+- **Response:** The endpoint returns `{ success, game_type, target_draw_date, predictions, timestamp }`. The frontend stores `response.data.predictions` in state and shows them in `PredictionDisplay`.
+
+### Stage 3: Viewing results, stats, and accuracy
+
+- **Historical results:** Components like `HistoricalResults` call `getResults(gameType, page, limit)` → `GET /api/results/{game_type}`. In `app.py`, `@app.get("/api/results/{game_type}")` (around line 96) uses `instantdb.get_results(...)` and returns paginated results.
+- **Statistics:** `StatisticsPanel` uses `getStatistics(gameType)` → `GET /api/stats/{game_type}`. The backend uses `utils/frequency_analysis.py` (e.g. `get_hot_numbers`, `get_cold_numbers`, `get_overdue_numbers`) and returns JSON for the panel.
+- **Error distance:** `ErrorDistanceAnalysis` uses `getPredictionAccuracy(gameType)` → `GET /api/predictions/{game_type}/accuracy`. The backend uses `instantdb.get_prediction_accuracy()` and `utils/error_distance_calculator.py` to build the metrics returned to the frontend.
+- **Gaussian view:** Any component that shows Gaussian distribution calls `getGaussianDistribution(gameType)` → `GET /api/stats/{game_type}/gaussian`; the backend computes sum/product stats and returns data for the scatter visualization.
+
+### Stage 4: CORS and how the frontend reaches the backend
+
+- **Why CORS matters:** The React app runs in the browser at `http://localhost:3000`. The API runs at `http://localhost:5000`. Browsers enforce the same-origin policy, so a request from the frontend origin to the backend origin is “cross-origin” and the backend must send allowed CORS headers for the browser to accept the response.
+- **Backend CORS (FastAPI):** In `backend/app.py`, right after creating the FastAPI app (around lines 50–56), the app adds `CORSMiddleware`:
+  - `allow_origins=["*"]` — any origin (e.g. `http://localhost:3000`) can call the API. In production you should set this to your real frontend origin(s).
+  - `allow_credentials=True` — allows cookies/credentials if you add them later.
+  - `allow_methods=["*"]` and `allow_headers=["*"]` — all usual HTTP methods and headers are allowed.
+  So every response from the FastAPI server includes CORS headers that tell the browser “this cross-origin response is allowed.”
+- **Development proxy (optional):** In development, `frontend/vite.config.js` configures a proxy: requests to path `/api` are forwarded to `http://localhost:5000`. The frontend can then use `API_BASE_URL` as the same origin (e.g. relative `/api` or full URL depending on config). When using the proxy, the browser only sees same-origin requests to the Vite server; Vite forwards `/api/*` to the backend, so CORS is less of an issue in that setup. If the frontend is configured to call `http://localhost:5000` directly (e.g. `API_BASE_URL = 'http://localhost:5000'`), then CORS middleware on the backend is what allows those cross-origin requests to succeed.
 
 ## 🏗️ System Architecture
 
@@ -399,7 +437,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **XGBoost**: ~6-10 seconds per prediction (includes training time)
 - **Decision Tree**: ~4-6 seconds per prediction
 - **Markov Chain**: ~1-3 seconds per prediction
-- **Normal Distribution**: ~0.1-0.5 seconds per prediction (fastest)
+- **Anomaly Detection**: ~0.1-0.5 seconds per prediction (fastest)
 - **DRL Agent**: ~20-40 seconds per prediction (5 episodes, continuous learning)
 - **Total Prediction Time**: ~30-60 seconds for all models (parallel execution)
 
@@ -414,7 +452,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **Environment Variables**: Make sure your InstantDB credentials are correct in `.env`
 - **Schema Deployment**: Must deploy InstantDB schema before first use (run `npm run dev` in `lof-v2-db`)
 - **Ports**: 
-  - Frontend: Vite dev server (port 5173 by default)
+  - Frontend: Vite dev server (port 3000; see `frontend/vite.config.js`)
   - Backend: FastAPI/Uvicorn (port 5000)
 
 ### Data Storage
