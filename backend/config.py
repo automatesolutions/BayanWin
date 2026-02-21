@@ -110,15 +110,39 @@ class Config:
     DECISION_TREE_PARAMS = {
         'n_estimators': 100,
         'max_depth': 10,
-        'random_state': 42
+        'random_state': 42,
+        # Structured features & clustering
+        'n_clusters': 5,
+        'use_local_models': True,
+        'sum_min': 100,
+        'sum_max': 250,
+        'use_historical_sum_range': True,
+        'markov_sum_buckets': 5,
+        # Monte Carlo (Ulam) prediction
+        'use_monte_carlo': True,
+        'mc_candidates': 100_000,
+        'mc_batch_size': 10_000,
     }
     
     MARKOV_CHAIN_PARAMS = {
-        'order': 1
+        'order': 1,
+        'delta_buckets': 5,
+        'use_latent_space': True,
+        'n_latent_clusters': 20
     }
     
     ANOMALY_DETECTION_PARAMS = {
-        'epsilon': 2.0  # Standard deviations for boundary
+        'epsilon': 2.0,
+        # Ulam/Monte Carlo parameters
+        'n_candidates': 1_000_000,
+        'batch_size': 50_000,
+        'sum_min': 100,
+        'sum_max': 250,
+        'use_historical_sum_range': True,
+        'n_markov_simulations': 10_000,
+        'sum_buckets': 15,
+        'product_buckets': 20,
+        'sigma_band': 1.5
     }
     
     DRL_PARAMS = {
@@ -126,6 +150,27 @@ class Config:
         'gamma': 0.99,
         'epsilon': 1.0,
         'epsilon_decay': 0.995,
-        'epsilon_min': 0.01
+        'epsilon_min': 0.01,
+        # Stochastic & exploration
+        'use_stochastic': True,
+        'boltzmann_temperature': 1.0,
+        'temperature_decay': 0.98,
+        'temperature_min': 0.1,
+        # Guard rails (reward penalties)
+        'sum_min': 100,
+        'sum_max': 250,
+        'guard_rail_penalty': 50,
+        'all_even_odd_penalty': 40,
+        # Monte Carlo validation
+        'use_monte_carlo_validation': True,
+        'mc_validation_samples': 5000,
+        'mc_top_candidates': 10,
+        # Warm start
+        'use_warm_start': True,
+        'warm_start_path': 'models/drl_warm_start',
+        # Transfer shortfall (baseline comparison)
+        'use_transfer_shortfall': True,
+        # Markovian state
+        'markov_sum_buckets': 5,
     }
 

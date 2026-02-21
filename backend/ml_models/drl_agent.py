@@ -1,594 +1,607 @@
-"""Deep Reinforcement Learning agent with 3 feedback loops."""
+"""
+Deep Reinforcement Learning agent with stochastic modeling and enhanced feedback.
+
+Improvements:
+1. Stochastic model (μ, σ) - smoother latent space, uncertainty quantification
+2. Markovian state - transition probabilities, negative states (failed predictions)
+3. Refined reward - guard rail penalties, transfer shortfall
+4. Boltzmann exploration - replaces ε-greedy
+5. Monte Carlo validation - Ulam-style simulation before final action
+6. Warm start - initialize from prior successful states
+"""
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
-from typing import List, Tuple, Dict
-# Removed SQLAlchemy - using InstantDB
+from collections import defaultdict
+from typing import List, Tuple, Dict, Optional
 from utils.data_processor import get_historical_data
 from utils.frequency_analysis import get_hot_numbers, get_cold_numbers, get_overdue_numbers
 from utils.error_distance_calculator import calculate_all_metrics
 from config import Config
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
+
+def _numbers_to_deltas(numbers: List[int]) -> np.ndarray:
+    """Convert sorted numbers to delta (spacing) representation."""
+    if len(numbers) < 2:
+        return np.zeros(5)
+    deltas = [numbers[i + 1] - numbers[i] for i in range(len(numbers) - 1)]
+    return np.array(deltas, dtype=np.float32) / 60.0
+
+
+def _get_baseline_best_error(game_type: str, instantdb_client=None) -> float:
+    """Get best in-sample error from frequency baseline for transfer shortfall."""
+    if instantdb_client is None:
+        try:
+            from services.instantdb_client import instantdb
+            instantdb_client = instantdb
+        except ImportError:
+            return 100.0
+    try:
+        results = instantdb_client.get_results(game_type, limit=100)
+        if not results:
+            return 100.0
+        hot = get_hot_numbers(game_type, top_n=6)
+        baseline_pred = sorted([n for n, _ in hot[:6]])
+        if len(baseline_pred) < 6:
+            return 100.0
+        errors = []
+        for r in results[:20]:
+            actual = [r.get(f'number_{i}') for i in range(1, 7)]
+            if all(actual):
+                metrics = calculate_all_metrics(baseline_pred, actual)
+                errors.append(metrics.get('euclidean_distance', 100))
+        return min(errors) if errors else 100.0
+    except Exception:
+        return 100.0
+
+
 class DRLAgent:
-    """Deep Reinforcement Learning agent for lottery prediction."""
+    """
+    DRL agent with stochastic modeling, Markovian state, Boltzmann exploration,
+    guard rail penalties, transfer shortfall, and Monte Carlo validation.
+    """
     
     def __init__(self):
         self.model = None
         self.target_model = None
         self.memory = []
-        self.epsilon = Config.DRL_PARAMS['epsilon']
-        self.epsilon_decay = Config.DRL_PARAMS['epsilon_decay']
-        self.epsilon_min = Config.DRL_PARAMS['epsilon_min']
-        self.gamma = Config.DRL_PARAMS['gamma']
+        self.params = Config.DRL_PARAMS
+        self.epsilon = self.params['epsilon']
+        self.epsilon_decay = self.params['epsilon_decay']
+        self.epsilon_min = self.params['epsilon_min']
+        self.gamma = self.params['gamma']
+        self.temperature = self.params.get('boltzmann_temperature', 1.0)
+        self.temp_decay = self.params.get('temperature_decay', 0.98)
+        self.temp_min = self.params.get('temperature_min', 0.1)
         self.is_trained = False
-        self.trained_game_type = None  # Track which game type this model was trained on
+        self.trained_game_type = None
+        self.markov_transitions = None
+        self.sum_min = self.params.get('sum_min', 100)
+        self.sum_max = self.params.get('sum_max', 250)
+        self.negative_state_vector = None
+        self.mc_histogram = None
         
-    def _build_model(self, state_size: int, action_size: int):
-        """Build DQN model (optimized for speed)."""
-        # Reduced model size for faster training
-        model = keras.Sequential([
-            layers.Dense(64, activation='relu', input_shape=(state_size,)),  # Reduced from 128
-            layers.Dropout(0.2),
-            layers.Dense(64, activation='relu'),  # Reduced from 128
-            layers.Dropout(0.2),
-            layers.Dense(32, activation='relu'),  # Reduced from 64
-            layers.Dense(action_size, activation='linear')
-        ])
+    def _build_model(self, state_size: int, action_size: int, stochastic: bool = True):
+        """Build model with optional stochastic (μ, σ) output."""
+        use_stoch = stochastic and self.params.get('use_stochastic', True)
+        
+        inputs = keras.Input(shape=(state_size,))
+        x = layers.Dense(64, activation='relu')(inputs)
+        x = layers.Dropout(0.2)(x)
+        x = layers.Dense(64, activation='relu')(x)
+        x = layers.Dropout(0.2)(x)
+        x = layers.Dense(32, activation='relu')(x)
+        
+        if use_stoch:
+            q_mean = layers.Dense(action_size, activation='linear', name='q_mean')(x)
+            q_logvar = layers.Dense(action_size, activation='softplus', name='q_logvar')(x)
+            outputs = layers.Concatenate()([q_mean, q_logvar])
+            model = keras.Model(inputs=inputs, outputs=outputs)
+        else:
+            outputs = layers.Dense(action_size, activation='linear')(x)
+            model = keras.Model(inputs=inputs, outputs=outputs)
         
         model.compile(
-            optimizer=keras.optimizers.Adam(learning_rate=Config.DRL_PARAMS['learning_rate']),
+            optimizer=keras.optimizers.Adam(learning_rate=self.params['learning_rate']),
             loss='mse'
         )
-        
         return model
     
-    def _get_state(self, game_type: str, recent_error_distance: float = None, error_history: List[float] = None) -> np.ndarray:
-        """
-        Get current state representation with ENHANCED error distance awareness.
+    def _get_q_values(self, model, state: np.ndarray, stochastic: bool = False) -> np.ndarray:
+        """Get Q-values, with optional sampling from (μ, σ)."""
+        out = model.predict(state, verbose=0)
+        if self.params.get('use_stochastic', True) and out.shape[1] == 2000:
+            q_mean = out[:, :1000]
+            q_logvar = out[:, 1000:]
+            q_std = np.sqrt(np.exp(np.clip(q_logvar, -10, 10)) + 1e-6)
+            if stochastic:
+                return q_mean + q_std * np.random.randn(*q_mean.shape).astype(np.float32)
+            return q_mean
+        return out
+    
+    def _build_markov_transitions(self, game_type: str) -> Optional[np.ndarray]:
+        """Build Markov transition probabilities for sum buckets."""
+        df = get_historical_data(game_type, limit=200)
+        if df.empty or len(df) < 20:
+            return None
+        df = df.sort_values('draw_date').reset_index(drop=True)
+        n_buckets = self.params.get('markov_sum_buckets', 5)
+        sum_range = self.sum_max - self.sum_min
+        bucket_size = max(1, sum_range // n_buckets)
         
-        State includes:
-        - Historical draws (encoded)
-        - Frequency stats
-        - Hot/cold/overdue numbers
-        - Error distance history with trend analysis (ENHANCED)
+        transitions = defaultdict(lambda: defaultdict(int))
+        prev_bucket = None
+        for idx in range(len(df)):
+            row = df.iloc[idx]
+            s = sum([row[f'number_{i}'] for i in range(1, 7)])
+            bucket = min(int((s - self.sum_min) / bucket_size), n_buckets - 1)
+            bucket = max(0, bucket)
+            if prev_bucket is not None:
+                transitions[prev_bucket][bucket] += 1
+            prev_bucket = bucket
+        
+        trans_probs = np.zeros((n_buckets, n_buckets))
+        for p, nexts in transitions.items():
+            total = sum(nexts.values())
+            for n, c in nexts.items():
+                trans_probs[p, n] = c / total
+        return trans_probs
+    
+    def _get_state(self, game_type: str, recent_error_distance: float = None,
+                   error_history: List[float] = None, failed_predictions: List[List[int]] = None) -> np.ndarray:
+        """
+        State with: frequency, error, Markovian transitions, negative states, delta features.
         """
         df = get_historical_data(game_type, limit=10)
         max_number = Config.GAMES[game_type]['max_number']
         
-        state = []
-        
-        # Frequency features
         hot_numbers = get_hot_numbers(game_type, top_n=10)
         cold_numbers = get_cold_numbers(game_type, bottom_n=10)
         overdue_numbers = get_overdue_numbers(game_type)[:10]
         
-        # One-hot encoding for hot numbers
         hot_vector = np.zeros(max_number)
         for num, _ in hot_numbers:
             if 1 <= num <= max_number:
                 hot_vector[num - 1] = 1
         
-        # One-hot encoding for cold numbers
         cold_vector = np.zeros(max_number)
         for num, _ in cold_numbers:
             if 1 <= num <= max_number:
                 cold_vector[num - 1] = 1
         
-        # One-hot encoding for overdue numbers
         overdue_vector = np.zeros(max_number)
         for num, _ in overdue_numbers:
             if 1 <= num <= max_number:
                 overdue_vector[num - 1] = 1
         
-        # Recent draws encoding
         if not df.empty:
-            latest_row = df.iloc[0]
-            recent_numbers = sorted([
-                latest_row['number_1'], latest_row['number_2'], latest_row['number_3'],
-                latest_row['number_4'], latest_row['number_5'], latest_row['number_6']
-            ])
+            latest = df.iloc[0]
+            recent_numbers = sorted([latest[f'number_{i}'] for i in range(1, 7)])
             recent_vector = np.zeros(max_number)
             for num in recent_numbers:
                 if 1 <= num <= max_number:
                     recent_vector[num - 1] = 1
+            delta_features = _numbers_to_deltas(recent_numbers)
+            latest_sum = sum(recent_numbers)
+            latest_product = np.log(np.prod(recent_numbers) + 1) / 25.0
         else:
             recent_vector = np.zeros(max_number)
+            delta_features = np.zeros(5)
+            latest_sum = (self.sum_min + self.sum_max) / 2
+            latest_product = 0.5
         
-        # ENHANCED: Add error distance features with trend analysis
-        max_error = 200  # Approximate max
+        max_error = 200
         if recent_error_distance is not None:
-            normalized_error = min(recent_error_distance / max_error, 1.0)
-            
-            # Calculate error trend if history is available
-            if error_history and len(error_history) >= 3:
-                recent_errors = error_history[-5:]  # Last 5 errors
-                avg_recent_error = np.mean(recent_errors)
-                error_variance = np.var(recent_errors) if len(recent_errors) > 1 else 0.0
-                
-                # Trend: positive = improving (errors decreasing), negative = worsening
-                if len(recent_errors) >= 2:
-                    trend = (recent_errors[-2] - recent_errors[-1]) / max_error  # Normalized trend
-                else:
-                    trend = 0.0
-                
-                # Normalize variance
-                normalized_variance = min(error_variance / (max_error ** 2), 1.0)
-                normalized_avg = min(avg_recent_error / max_error, 1.0)
-                
-                error_features = np.array([
-                    normalized_error,           # Current error
-                    1.0 - normalized_error,     # Inverse current error
-                    normalized_avg,             # Recent average error
-                    normalized_variance,        # Error variance (consistency)
-                    trend                       # Error trend (improving/worsening)
-                ])
+            norm_err = min(recent_error_distance / max_error, 1.0)
+            if error_history and len(error_history) >= 2:
+                recent = error_history[-5:]
+                avg_err = np.mean(recent) / max_error
+                var_err = min(np.var(recent) / (max_error**2), 1.0)
+                trend = (recent[-2] - recent[-1]) / max_error if len(recent) >= 2 else 0
             else:
-                # Fallback: just current error if no history
-                error_features = np.array([
-                    normalized_error,
-                    1.0 - normalized_error,
-                    0.5,  # Unknown average
-                    0.5,  # Unknown variance
-                    0.0   # Unknown trend
-                ])
+                avg_err, var_err, trend = 0.5, 0.5, 0.0
+            error_features = np.array([norm_err, 1 - norm_err, avg_err, var_err, trend], dtype=np.float32)
         else:
-            error_features = np.array([0.5, 0.5, 0.5, 0.5, 0.0])  # Neutral if unknown
+            error_features = np.array([0.5, 0.5, 0.5, 0.5, 0.0], dtype=np.float32)
         
-        # Combine state features
+        markov_features = np.zeros(self.params.get('markov_sum_buckets', 5), dtype=np.float32)
+        if self.markov_transitions is not None and not df.empty:
+            n_buckets = self.markov_transitions.shape[0]
+            bucket_size = max(1, (self.sum_max - self.sum_min) // n_buckets)
+            prev_bucket = min(int((latest_sum - self.sum_min) / bucket_size), n_buckets - 1)
+            prev_bucket = max(0, prev_bucket)
+            markov_features = self.markov_transitions[prev_bucket].astype(np.float32)
+        
+        negative_vector = np.zeros(max_number)
+        if failed_predictions:
+            for pred in failed_predictions[:2]:
+                for num in pred:
+                    if 1 <= num <= max_number:
+                        negative_vector[num - 1] = 1
+        
+        norm_sum = (latest_sum - self.sum_min) / max(self.sum_max - self.sum_min, 1)
+        norm_sum = np.clip(norm_sum, 0, 1)
+        
         state = np.concatenate([
-            hot_vector,
-            cold_vector,
-            overdue_vector,
-            recent_vector,
-            error_features  # ENHANCED: Error distance with trend awareness
+            hot_vector, cold_vector, overdue_vector, recent_vector,
+            error_features, markov_features, negative_vector,
+            delta_features, np.array([norm_sum, latest_product], dtype=np.float32)
         ])
-        
-        return state
+        return state.astype(np.float32)
     
     def _action_to_numbers(self, action: int, game_type: str) -> List[int]:
         """Convert action index to number selection."""
         max_number = Config.GAMES[game_type]['max_number']
         numbers_count = Config.GAMES[game_type]['numbers_count']
-        
-        # Simple mapping: use action as seed for number selection
         np.random.seed(action)
-        numbers = sorted(np.random.choice(
-            range(1, max_number + 1),
-            size=numbers_count,
-            replace=False
-        ))
-        
-        return [int(num) for num in numbers]
+        numbers = sorted(np.random.choice(range(1, max_number + 1), size=numbers_count, replace=False))
+        return [int(n) for n in numbers]
     
-    def _calculate_reward(self, predicted: List[int], actual: List[int], 
-                         game_type: str, error_distance: float = None) -> float:
-        """
-        Calculate reward using 3 feedback loops with IMPROVED error distance focus.
+    def _check_guard_rails(self, numbers: List[int]) -> Tuple[bool, float]:
+        """Check guard rails: sum range, even/odd balance. Returns (passed, penalty)."""
+        penalty = 0.0
+        s = sum(numbers)
+        if s < self.sum_min or s > self.sum_max:
+            penalty += self.params.get('guard_rail_penalty', 50)
+        evens = sum(1 for n in numbers if n % 2 == 0)
+        if evens == 0 or evens == 6:
+            penalty += self.params.get('all_even_odd_penalty', 40)
+        return (penalty == 0, penalty)
+    
+    def _calculate_reward(self, predicted: List[int], actual: List[int],
+                         game_type: str, error_distance: float = None,
+                         baseline_best_error: float = None) -> float:
+        """Reward with guard rail penalties and transfer shortfall."""
+        reward_a, reward_b, reward_c = 0.0, 0.0, 0.0
         
-        Feedback Loop A: Error Distance Analysis (PRIMARY - gradient descent style)
-        Feedback Loop B: K-Means & PCA
-        Feedback Loop C: Frequency Analysis
-        """
-        reward_a = 0.0
-        reward_b = 0.0
-        reward_c = 0.0
-        
-        # Feedback Loop A: Error Distance Analysis (IMPROVED)
         if actual:
             if error_distance is not None:
-                # Use provided error_distance (from accuracy records)
                 euclidean_dist = error_distance
-                # Calculate matches from predicted/actual if needed
-                predicted_set = set(predicted)
-                actual_set = set(actual)
-                matches = len(predicted_set.intersection(actual_set))
+                matches = len(set(predicted) & set(actual))
             else:
-                # Calculate from scratch
                 metrics = calculate_all_metrics(predicted, actual)
                 euclidean_dist = metrics.get('euclidean_distance', 100)
                 matches = metrics.get('set_intersection', 0)
             
-            # IMPROVED REWARD: Inverse relationship with error distance (like gradient descent)
-            # Lower error = Higher reward
-            # Formula: reward = base_reward / (1 + normalized_error)
-            # This creates a smooth gradient for learning
-            max_possible_error = 200  # Approximate max for 6/58 lottery
-            normalized_error = euclidean_dist / max_possible_error
-            
-            # ENHANCED: Stronger error reward with better gradient
-            # Scale: 0-200 reward range (doubled for stronger signal)
-            # Reduced multiplier from 10 to 5 for steeper gradient
-            error_reward = 200.0 / (1.0 + normalized_error * 5)
-            
-            # Bonus for matches (secondary signal)
-            match_bonus = matches * 15  # Increased from 10 to 15
-            
-            # Combined: Error distance is PRIMARY, matches are BONUS
+            max_err = 200
+            norm_err = euclidean_dist / max_err
+            error_reward = 200.0 / (1.0 + norm_err * 5)
+            match_bonus = matches * 15
             reward_a = error_reward + match_bonus
         
-        # Feedback Loop B: K-Means & PCA (simplified for performance)
-        # Skip expensive clustering if we have limited data or time constraints
-        df = get_historical_data(game_type, limit=200)  # Reduced from 1000 to 200
-        if len(df) >= 30:  # Reduced threshold from 50 to 30
+        _, guard_penalty = self._check_guard_rails(predicted)
+        reward_a -= guard_penalty
+        
+        if self.params.get('use_transfer_shortfall', True) and baseline_best_error is not None:
+            shortfall = baseline_best_error - euclidean_dist if actual else 0
+            if shortfall > 0:
+                reward_a += min(shortfall * 0.5, 30)
+        
+        df = get_historical_data(game_type, limit=100)
+        if len(df) >= 30:
             try:
-                # Prepare data for clustering (simplified)
-                data_points = []
-                for idx in range(min(len(df), 100)):  # Limit to first 100 rows
+                data = []
+                for idx in range(min(len(df), 80)):
                     row = df.iloc[idx]
-                    numbers = sorted([
-                        row['number_1'], row['number_2'], row['number_3'],
-                        row['number_4'], row['number_5'], row['number_6']
-                    ])
-                    sum_val = sum(numbers)
-                    product_val = np.prod(numbers) if np.prod(numbers) < 1e10 else 1e10  # Prevent overflow
-                    data_points.append([sum_val, product_val])
-                
-                if len(data_points) >= 5:
-                    X = np.array(data_points)
-                    
-                    # Apply PCA (faster with fewer components)
-                    pca = PCA(n_components=min(2, len(data_points) - 1))
-                    X_pca = pca.fit_transform(X)
-                    
-                    # K-Means clustering (fewer clusters for speed)
-                    n_clusters = min(3, len(data_points) // 10)  # Reduced from 5 to 3
-                    kmeans = KMeans(n_clusters=n_clusters, random_state=42, n_init=3)  # Reduced n_init
-                    clusters = kmeans.fit_predict(X_pca)
-                    
-                    # Check if prediction falls in high-density cluster
-                    pred_sum = sum(predicted)
-                    pred_product = min(np.prod(predicted), 1e10)  # Prevent overflow
-                    pred_point = pca.transform([[pred_sum, pred_product]])[0]
-                    pred_cluster = kmeans.predict([pred_point])[0]
-                    
-                    # Reward based on cluster density
-                    cluster_density = np.sum(clusters == pred_cluster) / len(clusters)
-                    reward_b = cluster_density * 20
-            except Exception as e:
-                # If clustering fails, just skip this reward component
+                    nums = [row[f'number_{i}'] for i in range(1, 7)]
+                    data.append([sum(nums), np.prod(nums) if np.prod(nums) < 1e10 else 1e10])
+                X = np.array(data)
+                pca = PCA(n_components=min(2, len(data) - 1))
+                X_pca = pca.fit_transform(X)
+                kmeans = KMeans(n_clusters=min(3, len(data) // 10), random_state=42, n_init=3)
+                kmeans.fit(X_pca)
+                pred_point = pca.transform([[sum(predicted), min(np.prod(predicted), 1e10)]])[0]
+                pred_cluster = kmeans.predict([pred_point])[0]
+                density = np.sum(kmeans.predict(X_pca) == pred_cluster) / len(X_pca)
+                reward_b = density * 20
+            except Exception:
                 reward_b = 0
+        else:
+            reward_b = 0
         
-        # Feedback Loop C: Frequency Analysis
-        hot_numbers = get_hot_numbers(game_type, top_n=10)
-        hot_set = set([num for num, _ in hot_numbers])
+        hot_set = set(n for n, _ in get_hot_numbers(game_type, top_n=10))
+        cold_set = set(n for n, _ in get_cold_numbers(game_type, bottom_n=10))
+        overdue_set = set(n for n, _ in get_overdue_numbers(game_type)[:10])
+        pred_set = set(predicted)
+        reward_c = len(pred_set & hot_set) * 5 + len(pred_set & overdue_set) * 3 - len(pred_set & cold_set) * 2
         
-        cold_numbers = get_cold_numbers(game_type, bottom_n=10)
-        cold_set = set([num for num, _ in cold_numbers])
-        
-        overdue_numbers = get_overdue_numbers(game_type)[:10]
-        overdue_set = set([num for num, _ in overdue_numbers])
-        
-        # Reward alignment with frequency-weighted sets
-        predicted_set = set(predicted)
-        hot_matches = len(predicted_set.intersection(hot_set))
-        cold_matches = len(predicted_set.intersection(cold_set))
-        overdue_matches = len(predicted_set.intersection(overdue_set))
-        
-        # Prefer hot and overdue numbers, avoid too many cold numbers
-        reward_c = hot_matches * 5 + overdue_matches * 3 - cold_matches * 2
-        
-        # ENHANCED: Weighted combination - Error distance is 85% of reward
-        # This makes error distance the dominant learning signal
-        total_reward = reward_a * 0.85 + reward_b * 0.10 + reward_c * 0.05
-        
-        return total_reward
+        return reward_a * 0.85 + reward_b * 0.10 + reward_c * 0.05
     
-    def train(self, game_type: str, episodes: int = 100):
-        """
-        Train the DRL agent.
-        
-        Args:
-            game_type: Game type identifier
-            db: Database session
-            episodes: Number of training episodes
-        """
+    def _boltzmann_action(self, q_values: np.ndarray, temperature: float) -> int:
+        """Select action via Boltzmann (softmax) exploration."""
+        q = q_values[0]
+        q_shifted = q - np.max(q)
+        exp_q = np.exp(np.clip(q_shifted / max(temperature, 0.01), -50, 50))
+        probs = exp_q / exp_q.sum()
+        return int(np.random.choice(len(probs), p=probs))
+    
+    def _build_mc_histogram(self, game_type: str, n_samples: int = 10000) -> Optional[Dict]:
+        """Build Monte Carlo histogram for validation."""
+        max_number = Config.GAMES[game_type]['max_number']
+        sums_count = defaultdict(int)
+        for _ in range(n_samples):
+            nums = sorted(np.random.choice(range(1, max_number + 1), size=6, replace=False))
+            s = sum(nums)
+            if self.sum_min <= s <= self.sum_max:
+                sums_count[s] += 1
+        if not sums_count:
+            return None
+        total = sum(sums_count.values())
+        return {k: v / total for k, v in sums_count.items()}
+    
+    def _mc_validation_score(self, numbers: List[int], histogram: Dict) -> float:
+        """Score prediction by Monte Carlo histogram frequency."""
+        s = sum(numbers)
+        return histogram.get(s, 0) if histogram else 0.5
+    
+    def _warm_start_load(self, game_type: str) -> bool:
+        """Load warm start weights if available."""
+        path = self.params.get('warm_start_path', 'models/drl_warm_start')
+        model_path = f"{path}_{game_type}.weights.h5"
+        if os.path.exists(model_path) and self.model is not None:
+            try:
+                self.model.load_weights(model_path)
+                self.target_model.set_weights(self.model.get_weights())
+                logger.info(f"DRL warm start loaded from {model_path}")
+                return True
+            except Exception as e:
+                logger.debug(f"Warm start load failed: {e}")
+        return False
+    
+    def _warm_start_save(self, game_type: str, reward: float) -> None:
+        """Save weights when reward is good (for warm start)."""
+        if reward < 80:
+            return
+        path = self.params.get('warm_start_path', 'models/drl_warm_start')
+        base_dir = os.path.dirname(path)
+        if base_dir:
+            os.makedirs(base_dir, exist_ok=True)
+        model_path = f"{path}_{game_type}.weights.h5"
+        try:
+            self.model.save_weights(model_path)
+            logger.info(f"DRL warm start saved to {model_path} (reward={reward:.1f})")
+        except Exception as e:
+            logger.debug(f"Warm start save failed: {e}")
+    
+    def train(self, game_type: str, episodes: int = 100) -> None:
+        """Train with Boltzmann exploration and stochastic model."""
         df = get_historical_data(game_type)
         if df.empty or len(df) < 20:
             raise ValueError("Insufficient historical data for DRL training")
         
         max_number = Config.GAMES[game_type]['max_number']
-        state_size = max_number * 4 + 5  # hot, cold, overdue, recent vectors + error features (ENHANCED: 5 features)
-        action_size = 1000  # Action space size
+        n_buckets = self.params.get('markov_sum_buckets', 5)
+        state_size = max_number * 4 + 5 + n_buckets + max_number + 5 + 2
+        action_size = 1000
         
-        # Build models
+        self.markov_transitions = self._build_markov_transitions(game_type)
+        if self.markov_transitions is None:
+            self.markov_transitions = np.ones((n_buckets, n_buckets)) / n_buckets
+        
         self.model = self._build_model(state_size, action_size)
         self.target_model = self._build_model(state_size, action_size)
         self.target_model.set_weights(self.model.get_weights())
         
-        # Training loop
+        if self.params.get('use_warm_start', True):
+            self._warm_start_load(game_type)
+        
+        baseline_error = _get_baseline_best_error(game_type) if self.params.get('use_transfer_shortfall') else None
+        
         for episode in range(episodes):
-            # Print progress every episode for small episode counts
             if episodes <= 5:
                 print(f"      DRL training: {episode + 1}/{episodes} episodes...")
             elif episode % 2 == 0 and episode > 0:
                 print(f"      DRL training: {episode}/{episodes} episodes...")
             
             state = self._get_state(game_type)
-            # Ensure state is 1D and has correct shape
-            state_1d = np.array(state).flatten()
-            state_reshaped = state_1d.reshape(1, -1)  # For prediction
+            state_1d = np.array(state).flatten().astype(np.float32)
+            state_reshaped = state_1d.reshape(1, -1)
             
-            # Epsilon-greedy action selection
-            if np.random.random() <= self.epsilon:
-                action = np.random.randint(0, action_size)
-            else:
-                q_values = self.model.predict(state_reshaped, verbose=0)
-                action = np.argmax(q_values[0])
+            q_values = self._get_q_values(self.model, state_reshaped, stochastic=True)
+            action = self._boltzmann_action(q_values, self.temperature)
             
-            # Get predicted numbers
             predicted = self._action_to_numbers(action, game_type)
-            
-            # Get actual result (use most recent if available)
             actual = None
             if not df.empty:
-                latest_row = df.iloc[0]
-                actual = [
-                    latest_row['number_1'], latest_row['number_2'], latest_row['number_3'],
-                    latest_row['number_4'], latest_row['number_5'], latest_row['number_6']
-                ]
+                latest = df.iloc[0]
+                actual = [latest[f'number_{i}'] for i in range(1, 7)]
             
-            # Calculate reward
-            reward = self._calculate_reward(predicted, actual, game_type)
+            reward = self._calculate_reward(predicted, actual, game_type, baseline_best_error=baseline_error)
             
-            # Store in memory - ensure state is 1D array with consistent shape
-            # Store as numpy array with explicit dtype to ensure consistency
-            self.memory.append((state_1d.astype(np.float32), action, reward))
+            self.memory.append((state_1d, action, reward))
             
-            # Update epsilon
-            if self.epsilon > self.epsilon_min:
-                self.epsilon *= self.epsilon_decay
+            self.temperature = max(self.temp_min, self.temperature * self.temp_decay)
             
-            # Train on batch if memory is sufficient (reduced batch size for speed)
-            if len(self.memory) >= 16:  # Reduced from 32 to 16
-                batch_size = min(16, len(self.memory))  # Reduced from 32 to 16
-                batch_indices = np.random.choice(len(self.memory), size=batch_size, replace=False)
-                # Get states from memory - they should all have the same shape
-                # Use stack instead of array to ensure proper shape handling
-                try:
-                    states_batch = np.stack([self.memory[i][0] for i in batch_indices])
-                except ValueError as e:
-                    # If shapes don't match, log and skip this batch
-                    print(f"      Warning: State shape mismatch in batch, skipping training: {e}")
-                    continue
-                actions_batch = np.array([self.memory[i][1] for i in batch_indices])
-                rewards_batch = np.array([self.memory[i][2] for i in batch_indices])
+            if len(self.memory) >= 16:
+                batch_size = min(16, len(self.memory))
+                indices = np.random.choice(len(self.memory), size=batch_size, replace=False)
+                states_batch = np.stack([self.memory[i][0] for i in indices])
+                actions_batch = np.array([self.memory[i][1] for i in indices])
+                rewards_batch = np.array([self.memory[i][2] for i in indices])
                 
-                # Update Q-values
-                q_values = self.model.predict(states_batch, verbose=0)
-                q_values[range(len(batch_indices)), actions_batch] = rewards_batch
+                out = self.model.predict(states_batch, verbose=0)
+                if out.shape[1] == 2000:
+                    q_mean = out[:, :1000]
+                    q_logvar = out[:, 1000:]
+                    q_mean[range(batch_size), actions_batch] = rewards_batch
+                    q_logvar[range(batch_size), actions_batch] = np.log(0.5)
+                    targets = np.concatenate([q_mean, q_logvar], axis=1)
+                else:
+                    q_values = out.copy()
+                    q_values[range(batch_size), actions_batch] = rewards_batch
+                    targets = q_values
                 
-                # Faster training with fewer epochs
-                self.model.fit(states_batch, q_values, epochs=1, verbose=0, batch_size=batch_size)
+                self.model.fit(states_batch, targets, epochs=1, verbose=0, batch_size=batch_size)
             
-            # Update target model periodically
             if episode % 10 == 0:
                 self.target_model.set_weights(self.model.get_weights())
+            
+            if episode == episodes - 1 and reward > 80:
+                self._warm_start_save(game_type, reward)
         
         self.is_trained = True
-        self.trained_game_type = game_type  # Remember which game type we trained on
+        self.trained_game_type = game_type
     
     def predict(self, game_type: str) -> List[int]:
-        """
-        Generate prediction using trained DRL agent.
-        
-        Args:
-            game_type: Game type identifier
-            db: Database session
-            
-        Returns:
-            List of 6 predicted numbers
-        """
-        # Retrain if not trained or if game type changed (different max_number = different state size)
+        """Predict with Monte Carlo validation and Boltzmann selection."""
         if not self.is_trained or self.trained_game_type != game_type:
-            self.train(game_type, episodes=3)  # Reduced to 3 episodes for faster predictions
+            self.train(game_type, episodes=3)
+        
+        max_number = Config.GAMES[game_type]['max_number']
+        n_buckets = self.params.get('markov_sum_buckets', 5)
+        state_size = max_number * 4 + 5 + n_buckets + max_number + 5 + 2
+        action_size = 1000
+        
+        if self.markov_transitions is None:
+            self.markov_transitions = self._build_markov_transitions(game_type)
+            if self.markov_transitions is None:
+                self.markov_transitions = np.ones((n_buckets, n_buckets)) / n_buckets
         
         state = self._get_state(game_type)
         state = state.reshape(1, -1)
         
-        # Get best action
-        q_values = self.model.predict(state, verbose=0)
-        action = np.argmax(q_values[0])
+        q_values = self._get_q_values(self.model, state, stochastic=False)
         
-        # Convert to numbers
-        predicted = self._action_to_numbers(action, game_type)
+        if self.params.get('use_monte_carlo_validation', True):
+            n_top = self.params.get('mc_top_candidates', 10)
+            n_samples = self.params.get('mc_validation_samples', 5000)
+            top_actions = np.argsort(q_values[0])[-n_top:][::-1]
+            
+            if self.mc_histogram is None:
+                self.mc_histogram = self._build_mc_histogram(game_type, n_samples)
+            
+            best_action = top_actions[0]
+            best_score = -1
+            for action in top_actions:
+                numbers = self._action_to_numbers(int(action), game_type)
+                mc_score = self._mc_validation_score(numbers, self.mc_histogram or {})
+                q_val = q_values[0, action]
+                combined = 0.7 * (q_val - q_values[0].min()) / max(q_values[0].max() - q_values[0].min(), 1e-6) + 0.3 * mc_score
+                if combined > best_score:
+                    best_score = combined
+                    best_action = action
+            action = best_action
+        else:
+            action = np.argmax(q_values[0])
         
-        return predicted
+        return self._action_to_numbers(int(action), game_type)
     
-    def learn_from_accuracy_records(self, game_type: str, accuracy_records: List[Dict], instantdb_client=None):
-        """
-        Learn from stored prediction accuracy records.
-        This creates a continuous learning loop using past predictions.
-        
-        Args:
-            game_type: Game type identifier
-            accuracy_records: List of accuracy records from prediction_accuracy table
-            instantdb_client: InstantDB client instance (optional, will import if not provided)
-        """
+    def learn_from_accuracy_records(self, game_type: str, accuracy_records: List[Dict],
+                                    instantdb_client=None) -> None:
+        """Learn from accuracy records with negative states and transfer shortfall."""
         if not accuracy_records or len(accuracy_records) < 5:
-            return  # Need minimum data to learn
+            return
         
-        # Import instantdb if not provided
         if instantdb_client is None:
             from services.instantdb_client import instantdb
             instantdb_client = instantdb
         
         try:
-            # Get predictions and results for these accuracy records
             predictions = instantdb_client.get_predictions(game_type, limit=1000)
             results = instantdb_client.get_results(game_type, limit=1000)
-            
-            # Filter for DRL predictions only
             drl_predictions = {p.get('id'): p for p in predictions if p.get('model_type') == 'DRL'}
             
-            # Build training data from accuracy records (only for DRL predictions)
-            # ENHANCED: Use all records with weighted sampling based on error
-            learning_data = []
-            prioritized_records = []
-            
-            # Collect error history for trend analysis
             error_history = []
-            for acc_record in accuracy_records[-100:]:  # Use last 100 records
-                error_dist = acc_record.get('error_distance')
-                if error_dist is not None:
-                    error_history.append(float(error_dist))
+            for acc in accuracy_records[-100:]:
+                ed = acc.get('error_distance')
+                if ed is not None:
+                    error_history.append(float(ed))
             
-            for acc_record in accuracy_records[-100:]:  # Use last 100 records
-                prediction_id = acc_record.get('prediction_id')
-                
-                # Only learn from DRL predictions
-                if prediction_id not in drl_predictions:
+            failed_predictions = []
+            prioritized = []
+            baseline_error = _get_baseline_best_error(game_type, instantdb_client)
+            
+            for acc in accuracy_records[-100:]:
+                pred_id = acc.get('prediction_id')
+                if pred_id not in drl_predictions:
                     continue
-                
-                prediction = drl_predictions[prediction_id]
-                result_id = acc_record.get('result_id')
-                
-                # Find matching result
-                result = next((r for r in results if r.get('id') == result_id), None)
-                
+                pred = drl_predictions[pred_id]
+                result = next((r for r in results if r.get('id') == acc.get('result_id')), None)
                 if not result:
                     continue
+                error_dist = acc.get('error_distance')
+                if error_dist is None:
+                    continue
                 
-                # Get error_distance directly from accuracy record
-                error_distance = acc_record.get('error_distance')
-                if error_distance is None:
-                    continue  # Skip if no error distance
+                predicted = [pred.get(f'predicted_number_{i}') for i in range(1, 7)]
+                actual = [result.get(f'number_{i}') for i in range(1, 7)]
+                if error_dist > 80:
+                    failed_predictions.append(predicted)
                 
-                predicted = [
-                    prediction.get('predicted_number_1'),
-                    prediction.get('predicted_number_2'),
-                    prediction.get('predicted_number_3'),
-                    prediction.get('predicted_number_4'),
-                    prediction.get('predicted_number_5'),
-                    prediction.get('predicted_number_6')
-                ]
-                
-                actual = [
-                    result.get('number_1'), result.get('number_2'),
-                    result.get('number_3'), result.get('number_4'),
-                    result.get('number_5'), result.get('number_6')
-                ]
-                
-                # ENHANCED: Get state with error distance and trend awareness
-                state = self._get_state(game_type, recent_error_distance=error_distance, error_history=error_history)
-                state_1d = np.array(state).flatten()
-                
-                # Use error_distance directly in reward calculation
-                reward = self._calculate_reward(predicted, actual, game_type, error_distance=error_distance)
-                
-                # ENHANCED: Weight by inverse error (lower error = higher weight)
-                # This allows learning from all examples, not just top 50
-                weight = 1.0 / (1.0 + error_distance)
-                prioritized_records.append((state_1d.astype(np.float32), reward, weight, error_distance))
+                state = self._get_state(game_type, recent_error_distance=error_dist,
+                                       error_history=error_history, failed_predictions=failed_predictions[-5:])
+                state_1d = np.array(state).flatten().astype(np.float32)
+                reward = self._calculate_reward(predicted, actual, game_type,
+                                               error_distance=error_dist, baseline_best_error=baseline_error)
+                weight = 1.0 / (1.0 + error_dist)
+                prioritized.append((state_1d, reward, weight, error_dist))
             
-            # ENHANCED: Use weighted sampling instead of just top 50
-            # Sort by error (ascending) for better organization
-            prioritized_records.sort(key=lambda x: x[3])  # Sort by error_distance
+            prioritized.sort(key=lambda x: x[3])
+            if len(prioritized) < 5:
+                return
             
-            # Use all records but weight them by error (inverse relationship)
-            # Lower error records get higher weight in training
-            if len(prioritized_records) > 0:
-                weights = np.array([rec[2] for rec in prioritized_records])
-                weights = weights / weights.sum()  # Normalize weights
-                
-                # Sample records based on weights (prefer low-error but include all)
-                # Use at least 50 records, or all if less than 50
-                n_samples = min(max(50, len(prioritized_records)), len(prioritized_records))
-                if len(prioritized_records) <= 50:
-                    # Use all records
-                    selected_records = prioritized_records
-                else:
-                    # Weighted sampling: prefer low-error records but include variety
-                    # Take top 30 low-error + sample 20 more based on weights
-                    top_low_error = prioritized_records[:30]
-                    remaining = prioritized_records[30:]
-                    if len(remaining) > 0:
-                        remaining_weights = weights[30:] / weights[30:].sum()
-                        sampled_indices = np.random.choice(
-                            len(remaining),
-                            size=min(20, len(remaining)),
-                            replace=False,
-                            p=remaining_weights
-                        )
-                        sampled_remaining = [remaining[i] for i in sampled_indices]
-                        selected_records = top_low_error + sampled_remaining
-                    else:
-                        selected_records = top_low_error
+            weights = np.array([r[2] for r in prioritized])
+            weights = weights / weights.sum()
+            n_use = min(max(50, len(prioritized)), len(prioritized))
+            if len(prioritized) <= 50:
+                selected = prioritized
             else:
-                selected_records = []
+                top = prioritized[:30]
+                rem = prioritized[30:]
+                idx = np.random.choice(len(rem), size=min(20, len(rem)), replace=False, p=weights[30:] / weights[30:].sum())
+                selected = top + [rem[i] for i in idx]
             
-            # Convert to learning data format
-            learning_data = [(state, reward) for state, reward, _, _ in selected_records]
+            learning_data = [(s, r) for s, r, _, _ in selected]
             
-            if len(learning_data) < 5:
-                return  # Not enough data
+            max_number = Config.GAMES[game_type]['max_number']
+            n_buckets = self.params.get('markov_sum_buckets', 5)
+            state_size = max_number * 4 + 5 + n_buckets + max_number + 5 + 2
+            action_size = 1000
             
-            # Ensure model is built
             if self.model is None:
-                max_number = Config.GAMES[game_type]['max_number']
-                state_size = max_number * 4 + 5  # ENHANCED: Updated to include error trend features (5 features)
-                action_size = 1000
                 self.model = self._build_model(state_size, action_size)
                 self.target_model = self._build_model(state_size, action_size)
                 self.target_model.set_weights(self.model.get_weights())
+                if self.params.get('use_warm_start', True):
+                    self._warm_start_load(game_type)
             
-            # ENHANCED: Train with error-distance-focused learning
-            states_batch = np.stack([data[0] for data in learning_data])
-            rewards_batch = np.array([data[1] for data in learning_data])
+            states_batch = np.stack([d[0] for d in learning_data])
+            rewards_batch = np.array([d[1] for d in learning_data])
+            avg_error = np.mean([r[3] for r in selected])
             
-            # Calculate average error distance for logging and adaptive learning
-            avg_error = np.mean([rec[3] for rec in selected_records]) if selected_records else 0
-            
-            # Get current Q-values
-            q_values = self.model.predict(states_batch, verbose=0)
-            
-            # ENHANCED: Use reward as target for best action with gradient-style update
-            # Higher reward (lower error) should increase Q-value more
-            best_actions = np.argmax(q_values, axis=1)
-            
-            # ENHANCED: Adaptive learning rate based on error level
-            # Higher errors = more aggressive learning (higher alpha)
-            # Lower errors = more conservative learning (lower alpha)
-            base_alpha = 0.3
-            max_alpha = 0.7
-            if avg_error > 0:
-                # Scale alpha from 0.3 to 0.7 based on error level
-                # High errors (100+) get alpha ~0.7, low errors (20-) get alpha ~0.3
-                error_factor = min(avg_error / 200.0, 1.0)  # Normalize to 0-1
-                alpha = base_alpha + (max_alpha - base_alpha) * error_factor
+            out = self.model.predict(states_batch, verbose=0)
+            if out.shape[1] == 2000:
+                q_mean = out[:, :1000]
+                q_logvar = out[:, 1000:]
+                best_actions = np.argmax(q_mean, axis=1)
+                alpha = 0.3 + 0.4 * min(avg_error / 200, 1)
+                new_q = alpha * rewards_batch + (1 - alpha) * q_mean[range(len(learning_data)), best_actions]
+                q_mean[range(len(learning_data)), best_actions] = new_q
+                targets = np.concatenate([q_mean, q_logvar], axis=1)
             else:
-                alpha = base_alpha
+                q_values = out.copy()
+                best_actions = np.argmax(q_values, axis=1)
+                alpha = 0.3 + 0.4 * min(avg_error / 200, 1)
+                new_q = alpha * rewards_batch + (1 - alpha) * q_values[range(len(learning_data)), best_actions]
+                q_values[range(len(learning_data)), best_actions] = new_q
+                targets = q_values
             
-            current_q_values = q_values[range(len(learning_data)), best_actions]
-            target_q_values = alpha * rewards_batch + (1 - alpha) * current_q_values
-            q_values[range(len(learning_data)), best_actions] = target_q_values
+            epochs = min(3, max(1, len(learning_data) // 10))
+            self.model.fit(states_batch, targets, epochs=epochs, verbose=0,
+                          batch_size=min(16, len(learning_data)),
+                          validation_split=0.1 if len(learning_data) > 10 else 0)
             
-            # IMPROVED: Multiple epochs for better convergence (but still fast)
-            epochs = min(3, max(1, len(learning_data) // 10))  # Adaptive epochs
-            self.model.fit(
-                states_batch, q_values, 
-                epochs=epochs, 
-                verbose=0, 
-                batch_size=min(16, len(learning_data)),
-                validation_split=0.1 if len(learning_data) > 10 else 0
-            )
-            
-            # Update target model periodically for stability
             if len(learning_data) >= 10:
                 self.target_model.set_weights(self.model.get_weights())
             
-            logger.info(
-                f"DRL agent updated with {len(learning_data)} accuracy records for {game_type}. "
-                f"Avg error distance: {avg_error:.2f}, Learning rate (alpha): {alpha:.3f}"
-            )
+            logger.info(f"DRL updated with {len(learning_data)} records, avg_error={avg_error:.2f}")
             
         except Exception as e:
-            logger.warning(f"Failed to learn from accuracy records: {e}")
-            import traceback
-            logger.debug(traceback.format_exc())
-
+            logger.warning(f"DRL learn_from_accuracy_records failed: {e}")
