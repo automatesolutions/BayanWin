@@ -15,7 +15,7 @@ from sklearn.decomposition import PCA
 from collections import defaultdict
 from typing import List, Tuple, Dict, Optional
 from utils.data_processor import get_historical_data
-from utils.frequency_analysis import calculate_frequency
+from utils.frequency_analysis import calculate_frequency, get_overdue_numbers
 from config import Config
 
 
@@ -57,8 +57,12 @@ class DecisionTreeModel:
     def _build_features(self, prev_numbers: List[int], frequency: Dict,
                         markov_probs: Optional[np.ndarray] = None,
                         max_number: int = 58) -> np.ndarray:
-        """Build feature vector with Delta, Markovian, and statistical regularities."""
-        freq_features = [frequency.get(i, 0) for i in range(1, max_number + 1)]
+        """Build feature vector with Delta, Markovian, and statistical regularities.
+        Feature weights: reduce frequency dominance, boost delta/markov for diversity."""
+        freq_weight = self.params.get('freq_feature_weight', 1.0)
+        delta_weight = self.params.get('delta_markov_weight', 1.0)
+        
+        freq_features = np.array([frequency.get(i, 0) for i in range(1, max_number + 1)], dtype=np.float32) * freq_weight
         prev_features = prev_numbers + [0] * (6 - len(prev_numbers))
         
         stat_features = [
@@ -69,16 +73,16 @@ class DecisionTreeModel:
             min(prev_numbers)
         ]
         
-        delta_features = _numbers_to_deltas(prev_numbers)
+        delta_features = _numbers_to_deltas(prev_numbers) * delta_weight
         
         if markov_probs is not None:
-            markov_features = markov_probs.astype(np.float32)
+            markov_features = (markov_probs.astype(np.float32)) * delta_weight
         else:
             n_buckets = self.params.get('markov_sum_buckets', 5)
-            markov_features = np.ones(n_buckets, dtype=np.float32) / n_buckets
+            markov_features = np.ones(n_buckets, dtype=np.float32) / n_buckets * delta_weight
         
         return np.concatenate([
-            np.array(freq_features, dtype=np.float32),
+            freq_features,
             np.array(prev_features, dtype=np.float32),
             np.array(stat_features, dtype=np.float32),
             delta_features,
@@ -142,8 +146,10 @@ class DecisionTreeModel:
             sums.append(sum(numbers))
         
         if self.params.get('use_historical_sum_range', True):
-            self.sum_min = max(21, int(np.percentile(sums, 5)))
-            self.sum_max = min(6 * self.max_number - 15, int(np.percentile(sums, 95)))
+            p_lo = self.params.get('guard_rail_percentile_lo', 5)
+            p_hi = self.params.get('guard_rail_percentile_hi', 95)
+            self.sum_min = max(21, int(np.percentile(sums, p_lo)))
+            self.sum_max = min(6 * self.max_number - 15, int(np.percentile(sums, p_hi)))
         else:
             self.sum_min = self.params.get('sum_min', 100)
             self.sum_max = self.params.get('sum_max', 250)
@@ -264,20 +270,51 @@ class DecisionTreeModel:
         model = self._get_model_for_draw(prev_numbers)
         appear_probs = self._get_appear_probs(model, X)
         
+        appear_probs = self._apply_diversity_transform(appear_probs, game_type)
+        
         if self.params.get('use_monte_carlo', True):
             return self._monte_carlo_predict(appear_probs, frequency)
         
         return self._top6_predict(appear_probs, frequency)
     
+    def _apply_diversity_transform(self, appear_probs: np.ndarray, game_type: str) -> np.ndarray:
+        """Add noise and overdue blend to diversify from XGBoost."""
+        diversity_noise = self.params.get('diversity_noise', 0.0)
+        overdue_weight = self.params.get('blend_overdue_weight', 0.0)
+        
+        probs = appear_probs.copy().astype(np.float64)
+        
+        if diversity_noise > 0:
+            noise = np.random.uniform(0, diversity_noise, size=probs.shape)
+            probs = probs + noise
+        
+        if overdue_weight > 0:
+            overdue = get_overdue_numbers(game_type)
+            overdue_boost = np.zeros_like(probs)
+            for num, days in overdue[:20]:
+                if 1 <= num <= len(overdue_boost):
+                    overdue_boost[num - 1] = min(days / 100.0, 1.0)
+            if overdue_boost.sum() > 0:
+                overdue_boost = overdue_boost / overdue_boost.sum()
+                probs = (1 - overdue_weight) * probs + overdue_weight * overdue_boost
+        
+        probs = np.maximum(probs, 0.001)
+        return probs / probs.sum()
+    
     def _monte_carlo_predict(self, appear_probs: np.ndarray, frequency: Dict) -> List[int]:
-        """Monte Carlo (Ulam) prediction: generate candidates, filter by guard rails."""
+        """Monte Carlo (Ulam) prediction: generate candidates, filter by guard rails.
+        Uses temperature and uniform prior for diverse sampling vs XGBoost."""
         max_number = self.max_number
         sum_min = self.sum_min or 100
         sum_max = self.sum_max or 250
         n_candidates = self.params.get('mc_candidates', 100_000)
         batch_size = self.params.get('mc_batch_size', 10_000)
+        temperature = self.params.get('mc_temperature', 1.0)
+        uniform_prior = self.params.get('mc_uniform_prior', 0.0)
         
         probs = appear_probs + 0.01
+        probs = np.power(probs, 1.0 / temperature)
+        probs = (1.0 - uniform_prior) * probs + uniform_prior / max_number
         probs = probs / probs.sum()
         
         candidate_counts = defaultdict(int)
@@ -299,22 +336,36 @@ class DecisionTreeModel:
                         candidate_counts[key] += 1
         
         if candidate_counts:
-            best = max(candidate_counts.items(), key=lambda x: x[1])[0]
-            return list(best)
+            sorted_candidates = sorted(candidate_counts.items(), key=lambda x: x[1], reverse=True)
+            pick_from_top = self.params.get('mc_pick_from_top', 1)
+            pick_from_top = min(pick_from_top, len(sorted_candidates))
+            if pick_from_top > 1:
+                top_candidates = [c[0] for c in sorted_candidates[:pick_from_top]]
+                chosen = top_candidates[np.random.randint(0, len(top_candidates))]
+                return list(chosen)
+            return list(sorted_candidates[0][0])
         
         return self._top6_predict(appear_probs, frequency)
     
     def _top6_predict(self, appear_probs: np.ndarray, frequency: Dict) -> List[int]:
-        """Fallback: pick top 6 by probability."""
+        """Fallback: sample from top-N with flattened weights (diversity vs strict top-6)."""
         max_number = self.max_number
-        top_indices = np.argsort(appear_probs)[::-1]
-        predicted = []
-        for idx in top_indices:
-            num = int(idx) + 1
-            if num <= max_number and num not in predicted:
-                predicted.append(num)
-                if len(predicted) == 6:
-                    break
+        top_n = self.params.get('top_n_for_sampling', 15)
+        top_n = max(6, min(top_n, max_number))
+        
+        top_indices = np.argsort(appear_probs)[::-1][:top_n]
+        top_probs = appear_probs[top_indices] + 0.01
+        top_probs = np.power(top_probs, 0.5)
+        top_probs = top_probs / top_probs.sum()
+        
+        try:
+            sampled_indices = np.random.choice(
+                top_indices, size=6, replace=False, p=top_probs
+            )
+            predicted = [int(i) + 1 for i in sorted(sampled_indices)]
+        except (ValueError, Exception):
+            predicted = [int(top_indices[i]) + 1 for i in range(min(6, len(top_indices)))]
+        
         if len(predicted) < 6:
             sorted_nums = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
             for num, _ in sorted_nums:

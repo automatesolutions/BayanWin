@@ -122,6 +122,17 @@ class Config:
         'use_monte_carlo': True,
         'mc_candidates': 100_000,
         'mc_batch_size': 10_000,
+        # Diversity vs XGBoost (aggressive)
+        'guard_rail_percentile_lo': 1,
+        'guard_rail_percentile_hi': 99,
+        'top_n_for_sampling': 25,
+        'freq_feature_weight': 0.35,
+        'delta_markov_weight': 2.0,
+        'mc_temperature': 2.5,
+        'mc_uniform_prior': 0.3,
+        'diversity_noise': 0.25,
+        'blend_overdue_weight': 0.2,
+        'mc_pick_from_top': 5,
     }
     
     MARKOV_CHAIN_PARAMS = {
