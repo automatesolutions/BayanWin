@@ -144,9 +144,10 @@ class Config:
     
     ANOMALY_DETECTION_PARAMS = {
         'epsilon': 2.0,
-        # Ulam/Monte Carlo parameters
-        'n_candidates': 1_000_000,
-        'batch_size': 50_000,
+        # Ulam/Monte Carlo parameters (reduced for ~0.5-2s runtime vs 60s+ timeout)
+        'n_candidates': 50_000,
+        'batch_size': 10_000,
+        'n_training_sims': 25_000,  # empirical histogram (was 500K - caused 60s timeout)
         'sum_min': 100,
         'sum_max': 250,
         'use_historical_sum_range': True,

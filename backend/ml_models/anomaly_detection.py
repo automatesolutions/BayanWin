@@ -41,6 +41,21 @@ def _discretize_state(sum_val: float, product_log: float,
     return (sum_bucket, product_bucket)
 
 
+def _generate_batch_candidates(batch_size: int, max_number: int, numbers_count: int
+                               ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """
+    Vectorized generation of random lottery candidates.
+    Returns (candidates, sums, log_products) - each shape (batch_size,) or (batch_size, 6).
+    """
+    # Use argsort of random values to get unique indices per row (vectorized)
+    r = np.random.random((batch_size, max_number))
+    indices = np.argsort(r, axis=1)[:, :numbers_count]
+    candidates = np.sort(indices + 1, axis=1).astype(np.float64)  # 1..max_number
+    sums = np.sum(candidates, axis=1)
+    log_products = np.sum(np.log(np.maximum(candidates, 1e-10)), axis=1)
+    return candidates, sums, log_products
+
+
 class AnomalyDetectionModel:
     """
     Monte Carlo / Ulam-style model for lottery prediction.
@@ -125,21 +140,21 @@ class AnomalyDetectionModel:
             self.sum_min = max(21, int(np.mean(sums)) - 50)
             self.sum_max = min(6 * self.max_number - 15, int(np.mean(sums)) + 50)
         
-        # 1. Build empirical distribution via Monte Carlo simulation (Ulam: simulate over calculate)
-        n_sim = min(500_000, self.params.get('n_candidates', 1_000_000) // 2)
-        sim_sums = []
-        sim_log_products = []
-        
-        for _ in range(n_sim):
-            candidate = sorted(np.random.choice(
-                range(1, self.max_number + 1),
-                size=self.numbers_count,
-                replace=False
-            ))
-            s, log_p = _sum_product(candidate)
-            if self.sum_min <= s <= self.sum_max:
-                sim_sums.append(s)
-                sim_log_products.append(log_p)
+        # 1. Build empirical distribution via vectorized Monte Carlo (was 500K loop - caused timeout)
+        n_sim = self.params.get('n_training_sims', 25_000)
+        sim_batch_size = min(5000, n_sim)
+        sim_sums_list = []
+        sim_log_products_list = []
+        n_batches_train = (n_sim + sim_batch_size - 1) // sim_batch_size
+        for _ in range(min(n_batches_train, 10)):  # cap at 50K total
+            cands, sums_arr, log_prods_arr = _generate_batch_candidates(
+                sim_batch_size, self.max_number, self.numbers_count
+            )
+            mask = (sums_arr >= self.sum_min) & (sums_arr <= self.sum_max)
+            sim_sums_list.append(sums_arr[mask])
+            sim_log_products_list.append(log_prods_arr[mask])
+        sim_sums = np.concatenate(sim_sums_list) if sim_sums_list else np.array([])
+        sim_log_products = np.concatenate(sim_log_products_list) if sim_log_products_list else np.array([])
         
         if len(sim_sums) >= 100:
             self.empirical_histogram = np.histogram2d(
@@ -207,6 +222,27 @@ class AnomalyDetectionModel:
         combined_z = np.sqrt(sum_z**2 + product_z**2)
         return 1.0 / (1.0 + combined_z)
     
+    def _score_batch_empirical(self, sums: np.ndarray, log_products: np.ndarray) -> np.ndarray:
+        """Vectorized empirical scoring."""
+        if self.empirical_histogram is None:
+            return np.zeros(len(sums))
+        total = np.sum(self.empirical_histogram)
+        if total <= 0:
+            return np.zeros(len(sums))
+        sum_idx = np.searchsorted(self.hist_sum_bins, sums, side='right') - 1
+        product_idx = np.searchsorted(self.hist_product_bins, log_products, side='right') - 1
+        sum_idx = np.clip(sum_idx, 0, self.empirical_histogram.shape[0] - 1)
+        product_idx = np.clip(product_idx, 0, self.empirical_histogram.shape[1] - 1)
+        counts = self.empirical_histogram[sum_idx, product_idx]
+        return counts.astype(float) / total
+    
+    def _score_batch_historical(self, sums: np.ndarray, log_products: np.ndarray) -> np.ndarray:
+        """Vectorized historical deviation scoring."""
+        sum_z = np.abs(sums - self.hist_mean_sum) / self.hist_std_sum
+        product_z = np.abs(log_products - self.hist_mean_log_product) / self.hist_std_log_product
+        combined_z = np.sqrt(sum_z**2 + product_z**2)
+        return 1.0 / (1.0 + combined_z)
+    
     def predict(self, game_type: str) -> List[int]:
         """
         Predict using Ulam's Monte Carlo method with:
@@ -256,74 +292,53 @@ class AnomalyDetectionModel:
         sum_low = max(self.sum_min, sum_low)
         sum_high = min(self.sum_max, sum_high)
         
-        # Batched Monte Carlo: generate and score millions of candidates (Ulam: simulation over calculation)
-        top_candidates = []
-        n_batches = min((n_candidates + batch_size - 1) // batch_size, 20)
+        # Vectorized Monte Carlo: generate and score candidates in batches
+        all_candidates = []
+        all_scores = []
+        n_batches = min((n_candidates + batch_size - 1) // batch_size, 10)
         
         for _ in range(n_batches):
-            batch_candidates = []
-            for _ in range(batch_size):
-                candidate = sorted(np.random.choice(
-                    range(1, max_number + 1),
-                    size=numbers_count,
-                    replace=False
-                ))
-                s = sum(candidate)
-                if s < self.sum_min or s > self.sum_max:
-                    continue
-                log_p = np.log(np.prod(candidate))
-                
-                emp_score = self._score_with_empirical(s, log_p)
-                hist_score = self._score_historical_deviation(s, log_p)
-                combined_score = 0.5 * emp_score + 0.5 * hist_score
-                
-                if sum_low <= s <= sum_high:
-                    combined_score *= 1.2
-                
-                batch_candidates.append((candidate, combined_score, s))
+            cands, sums_arr, log_prods_arr = _generate_batch_candidates(
+                batch_size, max_number, numbers_count
+            )
+            mask = (sums_arr >= self.sum_min) & (sums_arr <= self.sum_max)
+            if not np.any(mask):
+                continue
+            cands = cands[mask]
+            sums_arr = sums_arr[mask]
+            log_prods_arr = log_prods_arr[mask]
             
-            if batch_candidates:
-                batch_candidates.sort(key=lambda x: x[1], reverse=True)
-                top_candidates.extend(batch_candidates[:1000])
-                top_candidates.sort(key=lambda x: x[1], reverse=True)
-                top_candidates = top_candidates[:5000]
+            emp_scores = self._score_batch_empirical(sums_arr, log_prods_arr)
+            hist_scores = self._score_batch_historical(sums_arr, log_prods_arr)
+            combined = 0.5 * emp_scores + 0.5 * hist_scores
+            in_band = (sums_arr >= sum_low) & (sums_arr <= sum_high)
+            combined[in_band] *= 1.2
+            
+            all_candidates.append(cands)
+            all_scores.append(combined)
         
-        if top_candidates:
-            best = top_candidates[0][0]
+        if all_candidates:
+            cands_cat = np.vstack(all_candidates)
+            scores_cat = np.concatenate(all_scores)
+            top_idx = np.argsort(scores_cat)[::-1][:1]
+            best = cands_cat[top_idx[0]]
             return [int(n) for n in best]
         
-        # Fallback: sample within uncertainty band
-        for _ in range(5000):
-            candidate = sorted(np.random.choice(
-                range(1, max_number + 1),
-                size=numbers_count,
-                replace=False
-            ))
-            s = sum(candidate)
-            if self.sum_min <= s <= self.sum_max and sum_low <= s <= sum_high:
-                return [int(n) for n in candidate]
+        # Fallback: vectorized sample within uncertainty band
+        cands, sums_arr, _ = _generate_batch_candidates(2000, max_number, numbers_count)
+        mask = (sums_arr >= self.sum_min) & (sums_arr <= self.sum_max) & (sums_arr >= sum_low) & (sums_arr <= sum_high)
+        if np.any(mask):
+            idx = np.where(mask)[0][0]
+            return [int(n) for n in cands[idx]]
         
-        # Final fallback: mean-targeted
-        mean_sum = int(self.hist_mean_sum)
-        best_candidate = None
-        best_diff = float('inf')
-        for _ in range(1000):
-            candidate = sorted(np.random.choice(
-                range(1, max_number + 1),
-                size=numbers_count,
-                replace=False
-            ))
-            s = sum(candidate)
-            if self.sum_min <= s <= self.sum_max:
-                diff = abs(s - mean_sum)
-                if diff < best_diff:
-                    best_diff = diff
-                    best_candidate = candidate
-        if best_candidate:
-            return [int(n) for n in best_candidate]
+        # Final fallback: mean-targeted (vectorized)
+        mean_sum = self.hist_mean_sum
+        cands, sums_arr, _ = _generate_batch_candidates(1000, max_number, numbers_count)
+        mask = (sums_arr >= self.sum_min) & (sums_arr <= self.sum_max)
+        if np.any(mask):
+            valid = cands[mask]
+            valid_sums = sums_arr[mask]
+            best_idx = np.argmin(np.abs(valid_sums - mean_sum))
+            return [int(n) for n in valid[best_idx]]
         
-        return [int(n) for n in sorted(np.random.choice(
-            range(1, max_number + 1),
-            size=numbers_count,
-            replace=False
-        ))]
+        return [int(n) for n in _generate_batch_candidates(1, max_number, numbers_count)[0][0]]
