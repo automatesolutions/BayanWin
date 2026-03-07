@@ -45,6 +45,7 @@ export const MODEL_TYPES = {
   DecisionTree: 'DecisionTree',
   MarkovChain: 'MarkovChain',
   AnomalyDetection: 'AnomalyDetection',
+  NashHotFilter: 'NashHotFilter',
   DRL: 'DRL'
 };
 

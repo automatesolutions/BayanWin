@@ -1,6 +1,6 @@
 # BayanWin 🎯
 
-A modern, full-stack web application that scrapes lottery results from Google Sheets, stores them in InstantDB, and provides 5 different ML-based prediction models for multiple lottery games.
+A modern, full-stack web application that scrapes lottery results from Google Sheets, stores them in InstantDB, and provides 6 different ML-based prediction models for multiple lottery games.
 
 > 📚 **Detailed Documentation**: For comprehensive system documentation including workflow flowchart and architecture details, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)
 
@@ -31,11 +31,12 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
   - All predictions are automatically saved to InstantDB
   - Automatic accuracy calculation when new results are scraped
 
-- **5 Machine Learning Prediction Models**:
+- **6 Machine Learning Prediction Models**:
   - **XGBoost**: Gradient boosting model using historical patterns (~6-10 seconds)
   - **Decision Tree**: Random Forest classifier based on frequency analysis (~4-6 seconds)
   - **Markov Chain**: State transition model for sequence prediction (~1-3 seconds)
-  - **Anomaly Detection**: Gaussian (sum/product) distribution analysis for highest-probability patterns (~0.1-0.5 seconds)
+  - **Anomaly Detection**: Monte Carlo / Gaussian (sum/product) distribution analysis for highest-probability patterns (~0.5-3 seconds)
+  - **NashHotFilter**: Nash Equilibrium mixed-strategy + Hot-Number probability filter (smart wheel, 3-even/3-odd balance; instant)
   - **Deep Reinforcement Learning (DRL)**: DRL agent with 3 feedback loops, continuously improves through accuracy feedback (~20-40 seconds, 5 episodes)
 
 - **Smart Model Training**: 
@@ -79,7 +80,7 @@ LOF_V2/
 │   ├── app.py           # Main FastAPI application
 │   ├── config.py        # Configuration (InstantDB credentials, Google Sheets IDs)
 │   ├── services/        # InstantDB client service
-│   ├── ml_models/       # 5 ML prediction models
+│   ├── ml_models/       # 6 ML prediction models
 │   ├── scrapers/        # Google Sheets scraper (pandas-based)
 │   ├── scripts/         # Node.js bridge scripts for InstantDB writes
 │   │   ├── save_results.js      # Save lottery results via Admin SDK
@@ -284,7 +285,7 @@ The `.env` file in the `backend` directory should contain:
   - Automatically skips duplicate entries based on draw_date and draw_number
 
 ### Predictions
-- `POST /api/predict/{game_type}` - Generate predictions from all 5 ML models
+- `POST /api/predict/{game_type}` - Generate predictions from all 6 ML models
   - Returns predictions from all models in real-time as they complete
   - Automatically saves predictions to InstantDB
   - Triggers background accuracy calculation
@@ -330,13 +331,13 @@ The `.env` file in the `backend` directory should contain:
 
 2. **Generate Predictions** by clicking "⚡ Generate Predictions"
    - System fetches historical data from InstantDB
-   - All 5 ML models train and predict in parallel
+   - All 6 ML models train and predict in parallel
    - Predictions appear in real-time as each model completes
    - All predictions are automatically saved to InstantDB
    - Background process matches predictions to results and calculates accuracy
 
 3. **View Results & Analysis**
-   - **Predictions Display**: See all 5 model predictions with real-time status
+   - **Predictions Display**: See all 6 model predictions with real-time status
    - **Historical Results**: Browse past lottery results with pagination
    - **Statistics Panel**: View hot/cold/overdue numbers and frequency analysis
    - **Error Distance Analysis**: Track prediction accuracy with detailed metrics
@@ -363,7 +364,7 @@ Each stage below maps to the actual code paths so you can trace requests end-to-
 ### Stage 2: User clicks “Generate Predictions”
 
 - **Frontend:** In `App.jsx`, `handleGeneratePredictions()` calls `generatePredictions(selectedGame)` from `api.js`, which sends `POST /api/predict/{game_type}` to the backend.
-- **Backend:** In `app.py`, `@app.post("/api/predict/{game_type}")` (around line 580) runs. It looks up the game in `Config.GAMES` (from `backend/config.py`), then iterates over the five models (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, DRL) defined in `model_types`. For each model it runs `model_instance.predict(game_type)` in a `ThreadPoolExecutor` (with a 60s or 120s timeout). Historical data is loaded via `get_historical_data()` in `backend/utils/data_processor.py`, which reads from InstantDB through the same `instantdb` client.
+- **Backend:** In `app.py`, `@app.post("/api/predict/{game_type}")` (around line 580) runs. It looks up the game in `Config.GAMES` (from `backend/config.py`), then iterates over the six models (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, NashHotFilter, DRL) defined in `model_types`. For each model it runs `model_instance.predict(game_type)` in a `ThreadPoolExecutor` (with a 60s or 120s timeout). Historical data is loaded via `get_historical_data()` in `backend/utils/data_processor.py`, which reads from InstantDB through the same `instantdb` client.
 - **Saving predictions:** Each successful prediction is stored with `instantdb.create_prediction(game_type, prediction_data)` (which may use the Node.js Admin SDK bridge). After all models finish, a background thread runs `auto_calculate_accuracy_for_new_results(game_type)`.
 - **Response:** The endpoint returns `{ success, game_type, target_draw_date, predictions, timestamp }`. The frontend stores `response.data.predictions` in state and shows them in `PredictionDisplay`.
 
@@ -437,9 +438,10 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **XGBoost**: ~6-10 seconds per prediction (includes training time)
 - **Decision Tree**: ~4-6 seconds per prediction
 - **Markov Chain**: ~1-3 seconds per prediction
-- **Anomaly Detection**: ~0.1-0.5 seconds per prediction (fastest)
+- **Anomaly Detection**: ~0.5-3 seconds per prediction (vectorized Monte Carlo)
+- **NashHotFilter**: Instant (Nash equilibrium + hot-number filter, no training)
 - **DRL Agent**: ~20-40 seconds per prediction (5 episodes, continuous learning)
-- **Total Prediction Time**: ~30-60 seconds for all models (parallel execution)
+- **Total Prediction Time**: ~30-65 seconds for all models (parallel execution)
 
 ### Model Training & Learning
 - **Smart Retraining**: Models automatically retrain when switching between game types
@@ -497,7 +499,7 @@ MIT License
 1. **User selects game** → Auto-scrapes data from Google Sheets
 2. **Data validation** → Saves new results to InstantDB (skips duplicates)
 3. **User generates predictions** → System fetches historical data
-4. **ML models train & predict** → All 5 models process in parallel
+4. **ML models train & predict** → All 6 models process in parallel
 5. **Predictions saved** → Automatically stored in InstantDB
 6. **Accuracy calculated** → Auto-matched with results when available
 7. **DRL learning loop** → Agent improves through feedback

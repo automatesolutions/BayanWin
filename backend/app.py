@@ -10,6 +10,7 @@ from ml_models.decision_tree import DecisionTreeModel
 from ml_models.markov_chain import MarkovChainModel
 from ml_models.anomaly_detection import AnomalyDetectionModel
 from ml_models.drl_agent import DRLAgent
+from ml_models.nash_hot_filter import NashHotFilterModel
 from utils.frequency_analysis import get_hot_numbers, get_cold_numbers, get_overdue_numbers, calculate_frequency
 from utils.error_distance_calculator import calculate_all_metrics
 from config import Config
@@ -63,6 +64,7 @@ decision_tree_model = DecisionTreeModel()
 markov_chain_model = MarkovChainModel()
 anomaly_detection_model = AnomalyDetectionModel()
 drl_agent = DRLAgent()
+nash_hot_filter_model = NashHotFilterModel(mode='hybrid')
 
 # Pydantic models for request/response validation
 class ScrapeRequest(BaseModel):
@@ -605,6 +607,7 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
             'DecisionTree': decision_tree_model,
             'MarkovChain': markov_chain_model,
             'AnomalyDetection': anomaly_detection_model,
+            'NashHotFilter': nash_hot_filter_model,
             'DRL': drl_agent
         }
         

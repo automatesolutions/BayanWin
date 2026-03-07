@@ -287,7 +287,7 @@
                 <p>
                     <strong>BayanWin</strong> is a modern, full-stack web application that predicts lottery numbers 
                     using multiple machine learning models. The system scrapes historical lottery data from Google Sheets, 
-                    stores it in InstantDB (a Backend-as-a-Service platform), and uses 5 different ML algorithms to 
+                    stores it in InstantDB (a Backend-as-a-Service platform),                     and uses 6 different ML algorithms to 
                     generate predictions for multiple lottery games.
                 </p>
 
@@ -322,7 +322,7 @@
                         <ul>
                             <li>FastAPI (Python)</li>
                             <li>Uvicorn (ASGI Server)</li>
-                            <li>5 ML Models</li>
+                            <li>6 ML Models</li>
                             <li>Google Sheets Scraper</li>
                             <li>Node.js Bridge (InstantDB Admin SDK)</li>
                         </ul>
@@ -393,29 +393,34 @@
                         <text x="550" y="750" text-anchor="middle" fill="white" font-size="14" font-weight="bold">Fetch Historical Data</text>
                         <text x="550" y="770" text-anchor="middle" fill="white" font-size="12">(from InstantDB via REST API)</text>
 
-                        <!-- ML Models Training/Prediction -->
-                        <rect x="50" y="820" width="200" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
-                        <text x="150" y="845" text-anchor="middle" fill="white" font-size="13" font-weight="bold">1. XGBoost</text>
-                        <text x="150" y="865" text-anchor="middle" fill="white" font-size="12">Gradient Boosting</text>
-                        <text x="150" y="885" text-anchor="middle" fill="white" font-size="12">~6-10 sec</text>
+                        <!-- ML Models Training/Prediction (6 models) -->
+                        <rect x="50" y="820" width="170" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
+                        <text x="135" y="845" text-anchor="middle" fill="white" font-size="12" font-weight="bold">1. XGBoost</text>
+                        <text x="135" y="865" text-anchor="middle" fill="white" font-size="11">Gradient Boosting</text>
+                        <text x="135" y="885" text-anchor="middle" fill="white" font-size="11">~6-10 sec</text>
 
-                        <rect x="300" y="820" width="200" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
-                        <text x="400" y="845" text-anchor="middle" fill="white" font-size="13" font-weight="bold">2. Decision Tree</text>
-                        <text x="400" y="865" text-anchor="middle" fill="white" font-size="12">Random Forest</text>
-                        <text x="400" y="885" text-anchor="middle" fill="white" font-size="12">~4-6 sec</text>
+                        <rect x="240" y="820" width="170" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
+                        <text x="325" y="845" text-anchor="middle" fill="white" font-size="12" font-weight="bold">2. Decision Tree</text>
+                        <text x="325" y="865" text-anchor="middle" fill="white" font-size="11">Random Forest</text>
+                        <text x="325" y="885" text-anchor="middle" fill="white" font-size="11">~4-6 sec</text>
 
-                        <rect x="550" y="820" width="200" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
-                        <text x="650" y="845" text-anchor="middle" fill="white" font-size="13" font-weight="bold">3. Markov Chain</text>
-                        <text x="650" y="865" text-anchor="middle" fill="white" font-size="12">State Transitions</text>
-                        <text x="650" y="885" text-anchor="middle" fill="white" font-size="12">~1-3 sec</text>
+                        <rect x="430" y="820" width="170" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
+                        <text x="515" y="845" text-anchor="middle" fill="white" font-size="12" font-weight="bold">3. Markov Chain</text>
+                        <text x="515" y="865" text-anchor="middle" fill="white" font-size="11">State Transitions</text>
+                        <text x="515" y="885" text-anchor="middle" fill="white" font-size="11">~1-3 sec</text>
 
-                        <rect x="800" y="820" width="200" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
-                        <text x="900" y="845" text-anchor="middle" fill="white" font-size="13" font-weight="bold">4. Anomaly Detect.</text>
-                        <text x="900" y="865" text-anchor="middle" fill="white" font-size="12">Gaussian Analysis</text>
-                        <text x="900" y="885" text-anchor="middle" fill="white" font-size="12">~0.1-0.5 sec</text>
+                        <rect x="620" y="820" width="170" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
+                        <text x="705" y="845" text-anchor="middle" fill="white" font-size="12" font-weight="bold">4. Anomaly</text>
+                        <text x="705" y="865" text-anchor="middle" fill="white" font-size="11">Monte Carlo / Gaussian</text>
+                        <text x="705" y="885" text-anchor="middle" fill="white" font-size="11">~0.5-3 sec</text>
+
+                        <rect x="810" y="820" width="170" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
+                        <text x="895" y="845" text-anchor="middle" fill="white" font-size="12" font-weight="bold">5. NashHotFilter</text>
+                        <text x="895" y="865" text-anchor="middle" fill="white" font-size="11">Nash + Hot-Number</text>
+                        <text x="895" y="885" text-anchor="middle" fill="white" font-size="11">Instant</text>
 
                         <rect x="425" y="940" width="250" height="80" rx="10" fill="#9B59B6" stroke="#8E44AD" stroke-width="2" class="flow-box ml"/>
-                        <text x="550" y="965" text-anchor="middle" fill="white" font-size="13" font-weight="bold">5. DRL Agent</text>
+                        <text x="550" y="965" text-anchor="middle" fill="white" font-size="13" font-weight="bold">6. DRL Agent</text>
                         <text x="550" y="985" text-anchor="middle" fill="white" font-size="12">Deep Reinforcement</text>
                         <text x="550" y="1005" text-anchor="middle" fill="white" font-size="12">Learning (~20-40 sec)</text>
 
@@ -461,22 +466,25 @@
                         <line x1="550" y1="680" x2="550" y2="720" class="arrow"/>
                         <line x1="550" y1="780" x2="550" y2="820" class="arrow"/>
                         
-                        <!-- Arrows to ML models -->
-                        <line x1="450" y1="860" x2="150" y2="860" class="arrow"/>
-                        <line x1="500" y1="860" x2="400" y2="860" class="arrow"/>
-                        <line x1="550" y1="860" x2="650" y2="860" class="arrow"/>
-                        <line x1="600" y1="860" x2="900" y2="860" class="arrow"/>
+                        <!-- Arrows to ML models (5 boxes in row + DRL below) -->
+                        <line x1="350" y1="860" x2="135" y2="860" class="arrow"/>
+                        <line x1="400" y1="860" x2="325" y2="860" class="arrow"/>
+                        <line x1="550" y1="860" x2="515" y2="860" class="arrow"/>
+                        <line x1="700" y1="860" x2="705" y2="860" class="arrow"/>
+                        <line x1="750" y1="860" x2="895" y2="860" class="arrow"/>
                         <line x1="550" y1="900" x2="550" y2="940" class="arrow"/>
                         
                         <!-- Arrows from ML models -->
-                        <line x1="150" y1="820" x2="150" y2="780" class="arrow"/>
-                        <line x1="150" y1="780" x2="550" y2="780" class="arrow"/>
-                        <line x1="400" y1="820" x2="400" y2="780" class="arrow"/>
-                        <line x1="400" y1="780" x2="550" y2="780" class="arrow"/>
-                        <line x1="650" y1="820" x2="650" y2="780" class="arrow"/>
-                        <line x1="650" y1="780" x2="550" y2="780" class="arrow"/>
-                        <line x1="900" y1="820" x2="900" y2="780" class="arrow"/>
-                        <line x1="900" y1="780" x2="550" y2="780" class="arrow"/>
+                        <line x1="135" y1="820" x2="135" y2="780" class="arrow"/>
+                        <line x1="135" y1="780" x2="550" y2="780" class="arrow"/>
+                        <line x1="325" y1="820" x2="325" y2="780" class="arrow"/>
+                        <line x1="325" y1="780" x2="550" y2="780" class="arrow"/>
+                        <line x1="515" y1="820" x2="515" y2="780" class="arrow"/>
+                        <line x1="515" y1="780" x2="550" y2="780" class="arrow"/>
+                        <line x1="705" y1="820" x2="705" y2="780" class="arrow"/>
+                        <line x1="705" y1="780" x2="550" y2="780" class="arrow"/>
+                        <line x1="895" y1="820" x2="895" y2="780" class="arrow"/>
+                        <line x1="895" y1="780" x2="550" y2="780" class="arrow"/>
                         <line x1="550" y1="1020" x2="550" y2="1060" class="arrow"/>
                         <line x1="550" y1="1120" x2="550" y2="1160" class="arrow"/>
                         <line x1="550" y1="1220" x2="550" y2="1260" class="arrow"/>
@@ -494,7 +502,7 @@
                     <ol>
                         <li><strong>User Interaction:</strong> User selects a game type, which automatically triggers data scraping</li>
                         <li><strong>Data Collection:</strong> System scrapes latest data from Google Sheets, validates it, and saves to InstantDB</li>
-                        <li><strong>Prediction Generation:</strong> User clicks "Generate Predictions" → System fetches historical data → All 5 ML models train and predict in parallel</li>
+                        <li><strong>Prediction Generation:</strong> User clicks "Generate Predictions" → System fetches historical data → All 6 ML models train and predict in parallel</li>
                         <li><strong>Data Storage:</strong> Predictions are saved to InstantDB for future reference and accuracy tracking</li>
                         <li><strong>Analysis & Display:</strong> Predictions are displayed, accuracy is auto-calculated, and statistics/analysis are shown</li>
                         <li><strong>DRL Learning Loop:</strong> DRL agent receives feedback from accuracy calculations to improve future predictions</li>
@@ -515,7 +523,7 @@
                 <h4>Stage 2: User clicks “Generate Predictions”</h4>
                 <ul>
                     <li><strong>Frontend:</strong> <code>App.jsx</code> — <code>handleGeneratePredictions()</code> calls <code>generatePredictions(selectedGame)</code> → <code>POST /api/predict/{game_type}</code>.</li>
-                    <li><strong>Backend:</strong> <code>app.py</code> — <code>@app.post("/api/predict/{game_type}")</code> (around line 580). Iterates over the five models in <code>model_types</code> (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, DRL). Each runs <code>model_instance.predict(game_type)</code> in a <code>ThreadPoolExecutor</code> (60s or 120s timeout). Historical data comes from <code>get_historical_data()</code> in <code>backend/utils/data_processor.py</code>, which reads from InstantDB via the <code>instantdb</code> client.</li>
+                    <li><strong>Backend:</strong> <code>app.py</code> — <code>@app.post("/api/predict/{game_type}")</code> (around line 580). Iterates over the six models in <code>model_types</code> (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, NashHotFilter, DRL). Each runs <code>model_instance.predict(game_type)</code> in a <code>ThreadPoolExecutor</code> (60s or 120s timeout). Historical data comes from <code>get_historical_data()</code> in <code>backend/utils/data_processor.py</code>, which reads from InstantDB via the <code>instantdb</code> client.</li>
                     <li><strong>Saving:</strong> Each prediction is stored with <code>instantdb.create_prediction(game_type, prediction_data)</code> (Node.js Admin SDK bridge). A background thread then runs <code>auto_calculate_accuracy_for_new_results(game_type)</code>.</li>
                     <li><strong>Response:</strong> Returns <code>{ success, game_type, target_draw_date, predictions, timestamp }</code>. Frontend stores <code>response.data.predictions</code> and shows them in <code>PredictionDisplay</code>.</li>
                 </ul>
@@ -544,7 +552,7 @@
             <section>
                 <h2>🤖 Machine Learning Models</h2>
                 <p>
-                    BayanWin employs 5 distinct ML models, each using different algorithms and approaches to generate predictions:
+                    BayanWin employs 6 distinct ML models, each using different algorithms and approaches to generate predictions:
                 </p>
 
                 <div class="model-grid">
@@ -571,13 +579,20 @@
 
                     <div class="model-card green">
                         <h4>4. Anomaly Detection Model</h4>
-                        <p><strong>Type:</strong> Gaussian (Sum/Product) Distribution Analysis</p>
-                        <p><strong>Approach:</strong> Uses sum and product of drawn numbers; fits Gaussian mixture model to select numbers in high-probability regions (AnomalyDetection in code).</p>
-                        <p><strong>Performance:</strong> ~0.1-0.5 seconds per prediction</p>
+                        <p><strong>Type:</strong> Monte Carlo / Gaussian (Sum/Product) Distribution Analysis</p>
+                        <p><strong>Approach:</strong> Uses sum and product of drawn numbers; vectorized Monte Carlo and Gaussian mixture to select numbers in high-probability regions.</p>
+                        <p><strong>Performance:</strong> ~0.5-3 seconds per prediction</p>
+                    </div>
+
+                    <div class="model-card" style="background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%); color: white;">
+                        <h4 style="color: white; margin-top: 0;">5. NashHotFilter</h4>
+                        <p><strong>Type:</strong> Nash Equilibrium + Hot-Number Filter</p>
+                        <p><strong>Approach:</strong> Smart wheel with Nash mixed-strategy (8 tickets, 12.5% each) and hot-number probability filter; enforces 3-even/3-odd balance. Hybrid mode replaces cold numbers with hot alternatives.</p>
+                        <p><strong>Performance:</strong> Instant (no training)</p>
                     </div>
 
                     <div class="model-card red">
-                        <h4>5. Deep Reinforcement Learning (DRL)</h4>
+                        <h4>6. Deep Reinforcement Learning (DRL)</h4>
                         <p><strong>Type:</strong> Reinforcement Learning Agent</p>
                         <p><strong>Approach:</strong> Uses deep neural networks with 3 feedback loops. Learns from accuracy records to optimize predictions over time (5 episodes per prediction).</p>
                         <p><strong>Performance:</strong> ~20-40 seconds per prediction</p>
@@ -633,7 +648,7 @@
                         <li><strong>Automated Data Scraping:</strong> Automatically scrapes new lottery data when a game is selected</li>
                         <li><strong>Duplicate Detection:</strong> Intelligently detects and skips duplicate entries based on draw_date and draw_number</li>
                         <li><strong>Real-time Training:</strong> ML models automatically retrain when switching between game types</li>
-                        <li><strong>Parallel Processing:</strong> All 5 models can process predictions simultaneously for faster results</li>
+                        <li><strong>Parallel Processing:</strong> All 6 models can process predictions simultaneously for faster results</li>
                         <li><strong>Accuracy Tracking:</strong> Automatic calculation and tracking of prediction accuracy with multiple metrics</li>
                         <li><strong>Statistical Analysis:</strong> Comprehensive statistics including hot/cold numbers, overdue numbers, frequency analysis</li>
                         <li><strong>Gaussian Visualization:</strong> Visual scatter plots showing sum and product distributions with winner highlights</li>
@@ -703,7 +718,7 @@
 
                 <h3>Predictions</h3>
                 <ul>
-                    <li><code>POST /api/predict/{game_type}</code> - Generate predictions from all 5 ML models</li>
+                    <li><code>POST /api/predict/{game_type}</code> - Generate predictions from all 6 ML models</li>
                     <li><code>GET /api/predictions/{game_type}</code> - Get stored predictions</li>
                     <li><code>GET /api/predictions/{game_type}/accuracy</code> - Get prediction accuracy metrics</li>
                     <li><code>POST /api/predictions/{prediction_id}/calculate-accuracy</code> - Calculate accuracy for a prediction</li>
@@ -802,8 +817,13 @@
                     </tr>
                     <tr>
                         <td>Anomaly Detection Prediction</td>
-                        <td>0.1-0.5 seconds</td>
-                        <td>Fastest model (Gaussian sum/product)</td>
+                        <td>0.5-3 seconds</td>
+                        <td>Vectorized Monte Carlo / Gaussian sum/product</td>
+                    </tr>
+                    <tr>
+                        <td>NashHotFilter Prediction</td>
+                        <td>Instant</td>
+                        <td>Nash equilibrium + hot-number filter (no training)</td>
                     </tr>
                     <tr>
                         <td>DRL Agent Prediction</td>
@@ -812,8 +832,8 @@
                     </tr>
                     <tr>
                         <td>Total Prediction Generation</td>
-                        <td>~30-60 seconds</td>
-                        <td>Parallel execution of all models</td>
+                        <td>~30-65 seconds</td>
+                        <td>Parallel execution of all 6 models</td>
                     </tr>
                 </table>
             </section>
@@ -829,6 +849,7 @@
                 <span class="badge">XGBoost</span>
                 <span class="badge">TensorFlow</span>
                 <span class="badge">scikit-learn</span>
+                <span class="badge">NashHotFilter</span>
                 <span class="badge">Node.js</span>
             </p>
         </footer>

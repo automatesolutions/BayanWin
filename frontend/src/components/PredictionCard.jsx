@@ -9,6 +9,7 @@ const PredictionCard = ({ modelName, numbers, previousPredictions, predictionId,
     DecisionTree: 'Random Forest classifier based on frequency analysis',
     MarkovChain: 'State transition model for sequence prediction',
     AnomalyDetection: 'Normal Distribution - highest probability patterns',
+    NashHotFilter: 'Nash Equilibrium + Hot-Number filter (smart wheel, 3-even/3-odd)',
     DRL: 'Deep Reinforcement Learning with 3 feedback loops'
   };
 

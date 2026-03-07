@@ -4,7 +4,7 @@ import PredictionCard from './PredictionCard';
 const PredictionDisplay = ({ predictions, loading }) => {
   if (loading && (!predictions || Object.keys(predictions).length === 0)) {
     // Initial loading - show all models as "Learning..."
-    const modelOrder = ['XGBoost', 'DecisionTree', 'MarkovChain', 'AnomalyDetection', 'DRL'];
+    const modelOrder = ['XGBoost', 'DecisionTree', 'MarkovChain', 'AnomalyDetection', 'NashHotFilter', 'DRL'];
     return (
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-electric-400 mb-6 flex items-center">
@@ -34,7 +34,7 @@ const PredictionDisplay = ({ predictions, loading }) => {
     );
   }
 
-  const modelOrder = ['XGBoost', 'DecisionTree', 'MarkovChain', 'AnomalyDetection', 'DRL'];
+  const modelOrder = ['XGBoost', 'DecisionTree', 'MarkovChain', 'AnomalyDetection', 'NashHotFilter', 'DRL'];
 
   return (
     <div className="mb-6">
