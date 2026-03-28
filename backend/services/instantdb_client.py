@@ -3,11 +3,14 @@ InstantDB Python Client for Backend
 Uses InstantDB REST API instead of direct PostgreSQL connection
 Reference: https://www.instantdb.com/docs/backend
 """
+import logging
 import requests
 import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 from config import Config
+
+logger = logging.getLogger(__name__)
 
 
 class InstantDBClient:
@@ -680,6 +683,84 @@ class InstantDBClient:
             })
         """
         return self._make_request('POST', 'query', {'query': query})
+
+    def get_sheet_cursor(self, game_type: str) -> Optional[Dict]:
+        """Load incremental Sheets cursor for game_type (InstantDB sheet_ingest_cursors)."""
+        import json
+        import os
+        import subprocess
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.normpath(os.path.join(current_dir, '..', 'scripts', 'query_sheet_cursor.js'))
+        if not os.path.exists(script_path):
+            logger.warning('query_sheet_cursor.js not found')
+            return None
+
+        env = os.environ.copy()
+        if Config.INSTANTDB_APP_ID:
+            env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
+        if Config.INSTANTDB_ADMIN_TOKEN:
+            env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
+
+        try:
+            result = subprocess.run(
+                ['node', script_path],
+                input=json.dumps({'game_type': game_type}),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                env=env,
+                cwd=os.path.dirname(script_path) or os.getcwd(),
+            )
+            if result.returncode != 0:
+                logger.warning('get_sheet_cursor failed: %s', (result.stderr or result.stdout)[:500])
+                return None
+            line = result.stdout.strip().splitlines()[-1]
+            data = json.loads(line)
+            return data.get('record')
+        except Exception as e:
+            logger.warning('get_sheet_cursor error: %s', e)
+            return None
+
+    def upsert_sheet_cursor(self, game_type: str, next_row: int, sheet_id: Optional[str] = None) -> None:
+        """Persist next 1-based sheet row to read for incremental sync."""
+        import json
+        import os
+        import subprocess
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.normpath(os.path.join(current_dir, '..', 'scripts', 'upsert_sheet_cursor.js'))
+        if not os.path.exists(script_path):
+            logger.warning('upsert_sheet_cursor.js not found')
+            return
+
+        env = os.environ.copy()
+        if Config.INSTANTDB_APP_ID:
+            env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
+        if Config.INSTANTDB_ADMIN_TOKEN:
+            env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
+
+        payload = {
+            'game_type': game_type,
+            'next_row': int(next_row),
+            'sheet_id': sheet_id or '',
+        }
+        try:
+            result = subprocess.run(
+                ['node', script_path],
+                input=json.dumps(payload),
+                text=True,
+                capture_output=True,
+                timeout=30,
+                env=env,
+                cwd=os.path.dirname(script_path) or os.getcwd(),
+            )
+            if result.returncode != 0:
+                logger.error('upsert_sheet_cursor failed: %s', (result.stderr or result.stdout)[:800])
+                raise RuntimeError('upsert_sheet_cursor failed')
+        except Exception as e:
+            logger.error('upsert_sheet_cursor error: %s', e)
+            raise
 
 
 # Global instance

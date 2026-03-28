@@ -1,6 +1,6 @@
 """Google Sheets scraper for PCSO lottery historical data."""
 from datetime import datetime
-from typing import List, Dict, Optional
+from typing import Any, List, Dict, Optional, Tuple
 from services.instantdb_client import instantdb
 from config import Config
 import logging
@@ -321,156 +321,223 @@ class GoogleSheetsScraper:
         except Exception as e:
             logger.warning(f"Could not fetch existing results: {e}")
             return {}
-    
-    async def scrape_game(self, game_type: str) -> Dict:
-        """Scrape data for a specific game from Google Sheets."""
+
+    def _incremental_eligible(self) -> bool:
+        if not getattr(Config, "SHEETS_INCREMENTAL_ENABLED", True):
+            return False
+        path = Config.GOOGLE_SERVICE_ACCOUNT_FILE
+        return bool(path) and os.path.isfile(str(path))
+
+    def _get_gspread_worksheet(self, sheet_id: str):
+        import gspread
+        from google.oauth2.service_account import Credentials
+
+        scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+        creds = Credentials.from_service_account_file(Config.GOOGLE_SERVICE_ACCOUNT_FILE, scopes=scopes)
+        gc = gspread.authorize(creds)
+        sh = gc.open_by_key(sheet_id)
+        return sh.worksheet(Config.SHEETS_WORKSHEET_NAME)
+
+    def _dataframe_from_matrix(self, header: List[str], rows: List[List[Any]]) -> pd.DataFrame:
+        if not rows:
+            return pd.DataFrame()
+        header = [str(h).strip() if h is not None else "" for h in header]
+        ncol = len(header)
+        padded = []
+        for r in rows:
+            r = r or []
+            row = list(r) + [""] * ncol
+            padded.append(row[:ncol])
+        return pd.DataFrame(padded, columns=header)
+
+    def _write_batches_to_instantdb(self, game_type: str, new_results: List[Dict]) -> Tuple[int, List[str]]:
+        """Persist new result rows via save_results.js bridge."""
+        import subprocess
+        import json
+
+        added_count = 0
+        errors: List[str] = []
+        if not new_results:
+            return 0, errors
+
+        batch_size = 100
+        total_batches = (len(new_results) + batch_size - 1) // batch_size
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.normpath(os.path.join(current_dir, "..", "scripts", "save_results.js"))
+        if not os.path.exists(script_path):
+            alt_path = os.path.join(os.path.dirname(current_dir), "scripts", "save_results.js")
+            if os.path.exists(alt_path):
+                script_path = alt_path
+
+        for batch_num in range(total_batches):
+            batch_start = batch_num * batch_size
+            batch_end = min(batch_start + batch_size, len(new_results))
+            batch = new_results[batch_start:batch_end]
+            try:
+                batch_data = {"game_type": game_type, "results": batch}
+                env = os.environ.copy()
+                env["INSTANTDB_APP_ID"] = str(Config.INSTANTDB_APP_ID)
+                env["INSTANTDB_ADMIN_TOKEN"] = str(Config.INSTANTDB_ADMIN_TOKEN)
+
+                result = subprocess.run(
+                    ["node", script_path],
+                    input=json.dumps(batch_data),
+                    text=True,
+                    capture_output=True,
+                    timeout=60,
+                    env=env,
+                    cwd=os.path.dirname(script_path) or os.getcwd(),
+                )
+                if result.returncode == 0:
+                    try:
+                        response = json.loads(result.stdout)
+                        batch_added = response.get("added", len(batch))
+                        added_count += batch_added
+                    except json.JSONDecodeError:
+                        added_count += len(batch)
+                else:
+                    error_msg = result.stderr or result.stdout
+                    logger.error(f"Batch {batch_num + 1} failed: {error_msg}")
+                    errors.append(f"Batch {batch_num + 1}: {error_msg}")
+            except Exception as e:
+                err = f"Error processing batch {batch_num + 1}: {e}"
+                logger.error(err)
+                errors.append(err)
+        return added_count, errors
+
+    def _finalize_parse_and_write(
+        self, game_type: str, game_name: str, sheet_results: List[Dict], rows_fetched: int, sync_mode: str, cursor_after: Optional[int]
+    ) -> Dict:
+        sheet_results = list(sheet_results)
+        sheet_results.sort(key=lambda x: x["draw_date"])
+        if sheet_results:
+            logger.info(f"  First date: {sheet_results[0]['draw_date']}  Last: {sheet_results[-1]['draw_date']}")
+
+        existing_results = self._get_existing_results(game_type)
+        new_results = []
+        for result in sheet_results:
+            draw_date = datetime.fromisoformat(result["draw_date"]).date().isoformat()
+            draw_number = result.get("draw_number", "")
+            composite_key = f"{draw_date}|{draw_number}"
+            if composite_key not in existing_results:
+                new_results.append(result)
+
+        logger.info(f"Found {len(new_results)} new results to add ({sync_mode}, rows_fetched={rows_fetched})")
+        added_count, errors = self._write_batches_to_instantdb(game_type, new_results)
+
+        out: Dict[str, Any] = {
+            "game_type": game_type,
+            "game_name": game_name,
+            "total_in_sheet": len(sheet_results),
+            "existing_in_db": len(existing_results),
+            "new_results": len(new_results),
+            "added": added_count,
+            "errors": errors,
+            "sync_mode": sync_mode,
+            "rows_fetched": rows_fetched,
+            "cursor_after": cursor_after,
+        }
+        return out
+
+    async def _scrape_game_full_csv(
+        self, game_type: str, sheet_id: str, game_name: str, sync_mode: str, persist_cursor: bool
+    ) -> Dict:
+        df = self._read_sheet(sheet_id)
+        logger.info(f"Read {len(df)} rows from sheet (CSV export, mode={sync_mode})")
+        sheet_results = self._parse_sheet_data(df, game_type)
+        next_row = 2 + len(df)
+        if persist_cursor and self._incremental_eligible():
+            try:
+                instantdb.upsert_sheet_cursor(game_type, next_row, sheet_id)
+            except Exception as e:
+                logger.warning("Could not persist sheet cursor after full sync: %s", e)
+        return self._finalize_parse_and_write(
+            game_type, game_name, sheet_results, len(df), sync_mode, next_row if persist_cursor else None
+        )
+
+    async def scrape_game(self, game_type: str, full_sync: bool = False) -> Dict:
+        """Scrape one game: incremental (gspread range) when eligible, else full CSV. Use full_sync=True to re-read entire sheet and reset cursor."""
         if game_type not in self.sheet_ids:
             raise ValueError(f"No Google Sheet configured for game type: {game_type}")
-        
+
         sheet_id = self.sheet_ids[game_type]
-        game_name = self.games[game_type]['name']
-        
+        game_name = self.games[game_type]["name"]
         logger.info(f"Scraping {game_name} from Google Sheets (ID: {sheet_id})...")
-        
+
+        if full_sync or not self._incremental_eligible():
+            if full_sync:
+                logger.info("full_sync requested — using full CSV path")
+            elif not self._incremental_eligible():
+                logger.info("Incremental disabled or no GOOGLE_SERVICE_ACCOUNT_FILE — using full CSV path")
+            return await self._scrape_game_full_csv(
+                game_type, sheet_id, game_name, "full" if full_sync else "full_csv_fallback", persist_cursor=True
+            )
+
         try:
-            # Read sheet data using pandas
-            df = self._read_sheet(sheet_id)
-            logger.info(f"Read {len(df)} rows from sheet")
-            
-            # Parse data
+            rec = instantdb.get_sheet_cursor(game_type)
+            if rec and rec.get("sheet_id") and str(rec.get("sheet_id")) != str(sheet_id):
+                logger.info("Stored sheet_id differs from config — running full CSV bootstrap")
+                return await self._scrape_game_full_csv(game_type, sheet_id, game_name, "full_bootstrap", persist_cursor=True)
+            if not rec or rec.get("next_row") is None:
+                logger.info("No sheet cursor yet — full CSV bootstrap")
+                return await self._scrape_game_full_csv(game_type, sheet_id, game_name, "full_bootstrap", persist_cursor=True)
+
+            ws = self._get_gspread_worksheet(sheet_id)
+            cursor = int(rec["next_row"])
+            window = max(10, int(Config.SHEETS_INCREMENTAL_WINDOW))
+            end_row = cursor + window - 1
+            range_a1 = f"A{cursor}:Z{end_row}"
+            logger.info("Incremental gspread range %s", range_a1)
+            values = ws.get(range_a1)
+            if not values:
+                # Advance by window so we don't get stuck if the sheet has blank gaps below the cursor.
+                next_row = cursor + window
+                try:
+                    instantdb.upsert_sheet_cursor(game_type, next_row, sheet_id)
+                except Exception as e:
+                    logger.warning("Could not persist sheet cursor after empty chunk: %s", e)
+                logger.info(
+                    "Empty incremental chunk at cursor=%s — advancing cursor by window=%s to %s",
+                    cursor,
+                    window,
+                    next_row,
+                )
+                return {
+                    "game_type": game_type,
+                    "game_name": game_name,
+                    "total_in_sheet": 0,
+                    "existing_in_db": len(self._get_existing_results(game_type)),
+                    "new_results": 0,
+                    "added": 0,
+                    "errors": [],
+                    "sync_mode": "incremental",
+                    "rows_fetched": 0,
+                    "cursor_after": next_row,
+                }
+
+            header = ws.row_values(1)
+            if not header:
+                raise ValueError("Could not read row 1 header from sheet")
+            df = self._dataframe_from_matrix(header, values)
             sheet_results = self._parse_sheet_data(df, game_type)
-            logger.info(f"Parsed {len(sheet_results)} results from sheet")
-            
-            # Sort by draw_date to preserve Google Sheets order (oldest to newest)
-            sheet_results.sort(key=lambda x: x['draw_date'])
-            logger.info(f"Sorted {len(sheet_results)} results by draw_date (oldest to newest)")
-            if sheet_results:
-                logger.info(f"  First date: {sheet_results[0]['draw_date']}")
-                logger.info(f"  Last date: {sheet_results[-1]['draw_date']}")
-            
-            # Get existing results from InstantDB
-            existing_results = self._get_existing_results(game_type)
-            logger.info(f"Found {len(existing_results)} existing results in database")
-            
-            # Filter out duplicates using both draw_date AND draw_number
-            new_results = []
-            for result in sheet_results:
-                draw_date = datetime.fromisoformat(result['draw_date']).date().isoformat()
-                draw_number = result.get('draw_number', '')
-                
-                # Create composite key to match the lookup
-                composite_key = f"{draw_date}|{draw_number}"
-                
-                if composite_key not in existing_results:
-                    new_results.append(result)
-                else:
-                    logger.debug(f"Skipping duplicate: {draw_date} - {draw_number}")
-            
-            logger.info(f"Found {len(new_results)} new results to add")
-            
-            # Add new results to InstantDB using batch saves via Node.js Admin SDK
-            added_count = 0
-            errors = []
-            
-            logger.info(f"Attempting to add {len(new_results)} new results to InstantDB...")
-            
-            if len(new_results) == 0:
-                logger.info("No new results to add - all data already exists in database")
-            else:
-                # Use batch processing with Node.js Admin SDK bridge
-                # Process in batches of 100 to avoid overwhelming the system
-                batch_size = 100
-                total_batches = (len(new_results) + batch_size - 1) // batch_size
-                
-                logger.info(f"Processing {len(new_results)} results in {total_batches} batches of {batch_size}...")
-                
-                for batch_num in range(total_batches):
-                    batch_start = batch_num * batch_size
-                    batch_end = min(batch_start + batch_size, len(new_results))
-                    batch = new_results[batch_start:batch_end]
-                    
-                    logger.info(f"Processing batch {batch_num + 1}/{total_batches}: records {batch_start + 1}-{batch_end} of {len(new_results)}")
-                    
-                    try:
-                        # Save batch using Node.js Admin SDK bridge
-                        import subprocess
-                        import json
-                        import os
-                        
-                        # Find the Node.js script
-                        current_dir = os.path.dirname(os.path.abspath(__file__))
-                        script_path = os.path.join(current_dir, '..', 'scripts', 'save_results.js')
-                        script_path = os.path.normpath(script_path)
-                        
-                        if not os.path.exists(script_path):
-                            alt_path = os.path.join(os.path.dirname(current_dir), 'scripts', 'save_results.js')
-                            if os.path.exists(alt_path):
-                                script_path = alt_path
-                        
-                        # Prepare batch data
-                        batch_data = {
-                            'game_type': game_type,
-                            'results': batch
-                        }
-                        
-                        # Set environment variables
-                        env = os.environ.copy()
-                        from config import Config
-                        env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
-                        env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
-                        
-                        # Call Node.js script
-                        result = subprocess.run(
-                            ['node', script_path],
-                            input=json.dumps(batch_data),
-                            text=True,
-                            capture_output=True,
-                            timeout=60,
-                            env=env,
-                            cwd=os.path.dirname(script_path) or os.getcwd()
-                        )
-                        
-                        if result.returncode == 0:
-                            try:
-                                response = json.loads(result.stdout)
-                                batch_added = response.get('added', len(batch))
-                                added_count += batch_added
-                                logger.info(f"[OK] Batch {batch_num + 1} saved: {batch_added} results")
-                            except json.JSONDecodeError:
-                                # Assume success if script ran without error
-                                added_count += len(batch)
-                                logger.info(f"[OK] Batch {batch_num + 1} saved: {len(batch)} results (response not JSON)")
-                        else:
-                            error_msg = result.stderr or result.stdout
-                            logger.error(f"Batch {batch_num + 1} failed: {error_msg}")
-                            errors.append(f"Batch {batch_num + 1}: {error_msg}")
-                    
-                    except Exception as e:
-                        error_msg = f"Error processing batch {batch_num + 1}: {e}"
-                        logger.error(error_msg)
-                        import traceback
-                        logger.error(traceback.format_exc())
-                        errors.append(error_msg)
-                
-                logger.info(f"[OK] Finished adding results: {added_count} successful, {len(errors)} errors")
-            
-            return {
-                'game_type': game_type,
-                'game_name': game_name,
-                'total_in_sheet': len(sheet_results),
-                'existing_in_db': len(existing_results),
-                'new_results': len(new_results),
-                'added': added_count,
-                'errors': errors
-            }
-            
+            next_row = cursor + len(values)
+            try:
+                instantdb.upsert_sheet_cursor(game_type, next_row, sheet_id)
+            except Exception as e:
+                logger.warning("Could not persist sheet cursor after incremental: %s", e)
+
+            return self._finalize_parse_and_write(
+                game_type, game_name, sheet_results, len(values), "incremental", next_row
+            )
         except Exception as e:
-            logger.error(f"Error scraping {game_name}: {e}")
+            logger.warning("Incremental scrape failed (%s); falling back to full CSV", e)
             import traceback
-            logger.error(traceback.format_exc())
-            raise
+            logger.debug(traceback.format_exc())
+            return await self._scrape_game_full_csv(
+                game_type, sheet_id, game_name, "full_csv_fallback_error", persist_cursor=True
+            )
     
-    async def scrape_all_games(self) -> Dict:
+    async def scrape_all_games(self, full_sync: bool = False) -> Dict:
         """Scrape data for all games from Google Sheets."""
         logger.info("Starting to scrape all games from Google Sheets...")
         
@@ -487,7 +554,7 @@ class GoogleSheetsScraper:
         
         for game_type in self.sheet_ids.keys():
             try:
-                game_stats = await self.scrape_game(game_type)
+                game_stats = await self.scrape_game(game_type, full_sync=full_sync)
                 stats['games'][game_type] = game_stats
                 
                 # Update summary

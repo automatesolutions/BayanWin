@@ -92,6 +92,14 @@ const rules = {
       delete: "true",
     },
   },
+  sheet_ingest_cursors: {
+    allow: {
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;

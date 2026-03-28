@@ -99,6 +99,10 @@ class Config:
     # If sheets are public, no credentials needed
     # If sheets are private, set GOOGLE_SERVICE_ACCOUNT_FILE path in .env
     GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE', None)
+    # Incremental sync via gspread (requires service account + Sheets API; share spreadsheet with SA email)
+    SHEETS_INCREMENTAL_ENABLED = os.getenv('SHEETS_INCREMENTAL_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+    SHEETS_INCREMENTAL_WINDOW = int(os.getenv('SHEETS_INCREMENTAL_WINDOW', '250'))
+    SHEETS_WORKSHEET_NAME = os.getenv('SHEETS_WORKSHEET_NAME', 'Sheet1')
     
     # ML Model Hyperparameters
     XGBOOST_PARAMS = {
