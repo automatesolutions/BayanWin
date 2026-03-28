@@ -6,6 +6,10 @@ import PredictionDisplay from './components/PredictionDisplay';
 import HistoricalResults from './components/HistoricalResults';
 import StatisticsPanel from './components/StatisticsPanel';
 import ErrorDistanceAnalysis from './components/ErrorDistanceAnalysis';
+import CooccurrenceGraph from './components/CooccurrenceGraph';
+import MarkovGraph from './components/MarkovGraph';
+import HotModelSankey from './components/HotModelSankey';
+import CouncilPanel from './components/CouncilPanel';
 import { generatePredictions, scrapeData } from './services/api';
 
 function App() {
@@ -17,16 +21,12 @@ function App() {
   const handleGameSelect = async (gameType) => {
     setSelectedGame(gameType);
     setPredictions(null);
-    
-    // Auto-scrape for new data when game is selected
+
     setScraping(true);
     try {
-      console.log(`Auto-scraping new data for ${gameType}...`);
       await scrapeData({ game_type: gameType });
-      console.log(`Auto-scraping completed for ${gameType}`);
     } catch (error) {
       console.warn('Auto-scrape skipped or failed:', error.response?.data?.detail || error.message);
-      // Don't show error to user - scraping is optional background task
     } finally {
       setScraping(false);
     }
@@ -50,29 +50,37 @@ function App() {
   return (
     <div className="min-h-screen flex flex-col bg-charcoal-900">
       <Header />
-      
+
       <main className="container mx-auto px-4 py-8 flex-1">
-          <GameSelector
-            selectedGame={selectedGame}
-            onGameSelect={handleGameSelect}
-            onGeneratePredictions={handleGeneratePredictions}
-            autoScraping={scraping}
-          />
+        <GameSelector
+          selectedGame={selectedGame}
+          onGameSelect={handleGameSelect}
+          onGeneratePredictions={handleGeneratePredictions}
+          autoScraping={scraping}
+        />
 
-          {selectedGame && (
-            <>
-              <PredictionDisplay predictions={predictions} loading={loading} />
+        {selectedGame && (
+          <>
+            <PredictionDisplay predictions={predictions} loading={loading} />
 
-              <div className="space-y-6 mt-6">
-                <HistoricalResults gameType={selectedGame} key={`${selectedGame}-${scraping}`} />
-                
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                  <StatisticsPanel gameType={selectedGame} />
-                  <ErrorDistanceAnalysis gameType={selectedGame} />
-                </div>
+            <CouncilPanel gameType={selectedGame} />
+
+            <div className="space-y-6 mt-6">
+              <HistoricalResults gameType={selectedGame} key={`${selectedGame}-${scraping}`} />
+
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                <CooccurrenceGraph gameType={selectedGame} />
+                <MarkovGraph gameType={selectedGame} />
               </div>
-            </>
-          )}
+              <HotModelSankey gameType={selectedGame} predictions={predictions} />
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <StatisticsPanel gameType={selectedGame} />
+                <ErrorDistanceAnalysis gameType={selectedGame} />
+              </div>
+            </div>
+          </>
+        )}
       </main>
 
       <Footer />
@@ -81,4 +89,3 @@ function App() {
 }
 
 export default App;
-

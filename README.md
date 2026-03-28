@@ -1,6 +1,18 @@
 # BayanWin 🎯
 
-A modern, full-stack web application that scrapes lottery results from Google Sheets, stores them in InstantDB, and provides 6 different ML-based prediction models for multiple lottery games.
+A modern, full-stack web application that scrapes lottery results from Google Sheets (and optionally [Apify](#apify-optional-ingest)), stores them in InstantDB, and provides **six core ML prediction models** plus **Miro** — an optional **LLM swarm-style** meta-predictor — for multiple lottery games.
+<img width="731" height="200" alt="image" src="https://github.com/user-attachments/assets/8afe2bdd-1548-4047-92cd-474de0942c87" />
+
+<img width="700" height="447" alt="image" src="https://github.com/user-attachments/assets/5b0d852c-e7ba-49c2-97fa-53e1d81ca460" />
+
+
+<img width="683" height="454" alt="image" src="https://github.com/user-attachments/assets/453a6dc2-b114-4b73-91e6-8f814d237fdf" />
+
+
+<img width="688" height="368" alt="image" src="https://github.com/user-attachments/assets/581d26c0-73c6-497e-86cb-f07c64ae8fbf" />
+
+
+
 
 > 📚 **Detailed Documentation**: For comprehensive system documentation including workflow flowchart and architecture details, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)
 
@@ -31,13 +43,27 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
   - All predictions are automatically saved to InstantDB
   - Automatic accuracy calculation when new results are scraped
 
-- **6 Machine Learning Prediction Models**:
+- **Six core ML prediction models**:
   - **XGBoost**: Gradient boosting model using historical patterns (~6-10 seconds)
   - **Decision Tree**: Random Forest classifier based on frequency analysis (~4-6 seconds)
   - **Markov Chain**: State transition model for sequence prediction (~1-3 seconds)
   - **Anomaly Detection**: Monte Carlo / Gaussian (sum/product) distribution analysis for highest-probability patterns (~0.5-3 seconds)
   - **NashHotFilter**: Nash Equilibrium mixed-strategy + Hot-Number probability filter (smart wheel, 3-even/3-odd balance; instant)
   - **Deep Reinforcement Learning (DRL)**: DRL agent with 3 feedback loops, continuously improves through accuracy feedback (~20-40 seconds, 5 episodes)
+
+- **Miro — LLM “swarm” synthesis (7th prediction)**  
+  *Naming:* the codebase and UI use **`Miro`** (`model_type: "Miro"`). “Swarm” here means a **coordinated multi-voice LLM workflow** (specialist round + chair), not separate third-party agent services.  
+  After the six models finish, the backend can run **Miro**: a **two-step OpenAI-compatible LLM** workflow — **one structured JSON “round table”** simulating the six specialist names, then a **chairman** call that outputs six numbers.  
+  - **Round 1:** The model is prompted to simulate **six named specialists** (same names as your ML models: XGBoost … DRL) and return JSON (`reaction_to_others`, optional `preferred_numbers`, `concerns`) over a shared analytics bundle.  
+  - **Round 2 (chairman):** A second call reads that transcript **plus** the same context and returns **`final_numbers`** (six distinct integers in game bounds).  
+  - **Context** (`build_miro_context` in `backend/services/miro_strategy.py`) includes: base model picks, **pairwise overlap**, **historical error-by-model**, hot/cold snapshot, **overdue** numbers, **Gaussian sum + product bands** (including log-mean / log-std on products via `backend/utils/gaussian_summary.py`), top **co-occurrence** and **cross-draw transition** edges, and draw metadata. Apify-ingested rows are included automatically because they live in the same InstantDB `*_results` tables.  
+  - **Validation:** Bounds and uniqueness checks, one **repair** LLM pass if needed, then a **deterministic vote fallback** across the six base models’ numbers so the UI rarely breaks.  
+  - **Persistence:** Same shape as other models — `model_type: "Miro"` saved via InstantDB.  
+  - **Config:** Requires `LLM_API_KEY`; toggle with `MIRO_STRATEGY_ENABLED` (see [`backend/.env.example`](./backend/.env.example)). **Advisory only** — does not retrain the six ML models.  
+  - **UI:** “Core models” grid plus a separate **“Miro — LLM synthesis”** panel in `PredictionDisplay`.
+
+- **AI Council (separate from Miro)**  
+  Optional **advisory prose** (`POST /api/predict/.../council-report` or bundled when `include_council=true`): overlap, historical leaders, caveats — **text only**, not a replacement for Miro’s numeric pick.
 
 - **Smart Model Training**: 
   - Models automatically retrain when switching between game types
@@ -79,7 +105,7 @@ LOF_V2/
 ├── backend/              # FastAPI backend API
 │   ├── app.py           # Main FastAPI application
 │   ├── config.py        # Configuration (InstantDB credentials, Google Sheets IDs)
-│   ├── services/        # InstantDB client service
+│   ├── services/        # InstantDB, Apify ingest, prediction council, Miro LLM strategy
 │   ├── ml_models/       # 6 ML prediction models
 │   ├── scrapers/        # Google Sheets scraper (pandas-based)
 │   ├── scripts/         # Node.js bridge scripts for InstantDB writes
@@ -164,6 +190,18 @@ GOOGLE_SERVICE_ACCOUNT_FILE=path/to/service-account.json
 
 # Optional (for uvicorn reload)
 DEBUG=True
+
+# OpenAI-compatible LLM — required for Miro (7th prediction) and optional AI Council
+LLM_API_KEY=
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_MODEL_NAME=gpt-4o-mini
+LLM_COUNCIL_ENABLED=true
+MIRO_STRATEGY_ENABLED=true
+
+# Apify (optional) — merge actor dataset into same InstantDB *_results as Sheets
+APIFY_API_TOKEN=
+APIFY_ACTOR_ID=
+APIFY_AUTO_INGEST=true
 ```
 
 **Get your InstantDB credentials:**
@@ -263,6 +301,13 @@ The `.env` file in the `backend` directory should contain:
 | `INSTANTDB_ADMIN_TOKEN` | ✅ Yes | Your InstantDB Admin Token (Secret) |
 | `GOOGLE_SERVICE_ACCOUNT_FILE` | ❌ No | Path to Google service account JSON (only if sheets are private) |
 | `DEBUG` | ❌ No | Set to `True` for uvicorn auto-reload (development) |
+| `LLM_API_KEY` | ✅ For Miro / Council | OpenAI-compatible API key (`sk-` or `sk-proj-`) |
+| `LLM_BASE_URL` | ❌ No | Default `https://api.openai.com/v1` |
+| `LLM_MODEL_NAME` | ❌ No | Chat model id (e.g. `gpt-4o-mini`) |
+| `MIRO_STRATEGY_ENABLED` | ❌ No | `true`/`false` — run Miro after the six ML models (default true) |
+| `APIFY_API_TOKEN` | ❌ No | Run actor + ingest dataset into InstantDB |
+| `APIFY_ACTOR_ID` | ❌ No | Actor id for PCSO / bulletin scrape |
+| `APIFY_AUTO_INGEST` | ❌ No | If true, optional auto-run after `POST /api/scrape` |
 
 **Important:** 
 - Never commit `.env` files to Git
@@ -270,6 +315,16 @@ The `.env` file in the `backend` directory should contain:
 - Google Sheets are accessed via public CSV export by default
 - Node.js and `@instantdb/admin` are required for saving data
 - No PostgreSQL connection string needed - InstantDB handles everything!
+
+## Apify (optional ingest)
+
+Actor runs can **append** normalized draw rows into the **same** InstantDB `*_results` entities used by Google Sheets (`backend/services/apify_ingest.py`). Dedupe uses `draw_date|draw_number`. Triggers:
+
+- `POST /api/ingest/apify` — body: `run_id`, optional `game_type`
+- `POST /api/webhooks/apify` — optional HMAC/secret if configured
+- After `POST /api/scrape` — when `APIFY_API_TOKEN`, `APIFY_ACTOR_ID`, and `APIFY_AUTO_INGEST` are set
+
+Downstream **Miro**, graphs (co-occurrence, transitions), and statistics **automatically** include Apify-backed rows because they all read `get_results`.
 
 ## 📡 API Endpoints
 
@@ -285,10 +340,11 @@ The `.env` file in the `backend` directory should contain:
   - Automatically skips duplicate entries based on draw_date and draw_number
 
 ### Predictions
-- `POST /api/predict/{game_type}` - Generate predictions from all 6 ML models
-  - Returns predictions from all models in real-time as they complete
-  - Automatically saves predictions to InstantDB
+- `POST /api/predict/{game_type}` - Generate predictions from all **six core ML models**, then **Miro** (if `LLM_API_KEY` is set and `MIRO_STRATEGY_ENABLED=true`)
+  - Query param: `include_council` — optional LLM advisory report (separate from Miro’s numeric pick)
+  - Returns a predictions map including **`Miro`** (numbers or error); saves each pick to InstantDB
   - Triggers background accuracy calculation
+- `POST /api/predict/{game_type}/council-report` - LLM advisory summary (agreement, outliers, caveats, etc.)
 - `GET /api/predictions/{game_type}` - Get stored predictions
   - Query params: `limit`
 - `GET /api/predictions/{game_type}/accuracy` - Get prediction accuracy metrics
@@ -304,6 +360,11 @@ The `.env` file in the `backend` directory should contain:
   - Returns: hot numbers, cold numbers, overdue numbers, general stats
 - `GET /api/stats/{game_type}/gaussian` - Get Gaussian distribution analysis
   - Returns: sum/product distributions, statistics, winners data for scatter plot visualization
+
+### Graphs (D3 frontend)
+- `GET /api/graphs/{game_type}/cooccurrence` — pair counts within draws
+- `GET /api/graphs/{game_type}/markov-edges` — directed transitions between consecutive draws
+- `POST /api/graphs/{game_type}/sankey` — hot vs “other” counts per model pick (body: current `predictions` map)
 
 ### Accuracy Diagnostics
 - `GET /api/accuracy/diagnostics/{game_type}` - Get diagnostic info (results/predictions/accuracy counts, date ranges, matching status) for debugging
@@ -331,13 +392,13 @@ The `.env` file in the `backend` directory should contain:
 
 2. **Generate Predictions** by clicking "⚡ Generate Predictions"
    - System fetches historical data from InstantDB
-   - All 6 ML models train and predict in parallel
-   - Predictions appear in real-time as each model completes
-   - All predictions are automatically saved to InstantDB
+   - All six core ML models train and predict (thread pool with per-model timeouts)
+   - **Miro** runs afterward (LLM swarm synthesis, ~2 API calls, server timeout up to ~180s) when enabled and `LLM_API_KEY` is set
+   - Predictions appear in the UI; all picks including Miro are saved to InstantDB
    - Background process matches predictions to results and calculates accuracy
 
 3. **View Results & Analysis**
-   - **Predictions Display**: See all 6 model predictions with real-time status
+   - **Predictions Display**: Core models in a grid; **Miro — LLM synthesis** in a separate panel below
    - **Historical Results**: Browse past lottery results with pagination
    - **Statistics Panel**: View hot/cold/overdue numbers and frequency analysis
    - **Error Distance Analysis**: Track prediction accuracy with detailed metrics
@@ -364,9 +425,10 @@ Each stage below maps to the actual code paths so you can trace requests end-to-
 ### Stage 2: User clicks “Generate Predictions”
 
 - **Frontend:** In `App.jsx`, `handleGeneratePredictions()` calls `generatePredictions(selectedGame)` from `api.js`, which sends `POST /api/predict/{game_type}` to the backend.
-- **Backend:** In `app.py`, `@app.post("/api/predict/{game_type}")` (around line 580) runs. It looks up the game in `Config.GAMES` (from `backend/config.py`), then iterates over the six models (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, NashHotFilter, DRL) defined in `model_types`. For each model it runs `model_instance.predict(game_type)` in a `ThreadPoolExecutor` (with a 60s or 120s timeout). Historical data is loaded via `get_historical_data()` in `backend/utils/data_processor.py`, which reads from InstantDB through the same `instantdb` client.
-- **Saving predictions:** Each successful prediction is stored with `instantdb.create_prediction(game_type, prediction_data)` (which may use the Node.js Admin SDK bridge). After all models finish, a background thread runs `auto_calculate_accuracy_for_new_results(game_type)`.
-- **Response:** The endpoint returns `{ success, game_type, target_draw_date, predictions, timestamp }`. The frontend stores `response.data.predictions` in state and shows them in `PredictionDisplay`.
+- **Backend:** In `app.py`, `@app.post("/api/predict/{game_type}")` runs the six core entries in `model_types` (XGBoost … DRL) with `ThreadPoolExecutor` timeouts. Historical data is read from InstantDB via each model / `data_processor` as before.
+- **Miro:** After that loop, if `MIRO_STRATEGY_ENABLED` and `LLM_API_KEY` are set, `run_miro_strategy_predict` from `backend/services/miro_strategy.py` runs (separate pool, long timeout), then `create_prediction` with `model_type: "Miro"`. If the LLM key is missing, the response still includes `Miro` with an error message for the UI.
+- **Saving predictions:** Each successful prediction is stored with `instantdb.create_prediction(...)`. A background thread runs `auto_calculate_accuracy_for_new_results(game_type)` afterward.
+- **Response:** `{ success, game_type, target_draw_date, predictions, timestamp }` plus optional `council_report` when requested. `predictions` includes **`Miro`**.
 
 ### Stage 3: Viewing results, stats, and accuracy
 
@@ -403,6 +465,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **Uvicorn** - ASGI server for high-performance async operations
 - **Pandas** - Google Sheets CSV reading and data processing
 - **XGBoost, TensorFlow, scikit-learn** - ML libraries for predictions
+- **OpenAI-compatible API** (`openai` Python SDK) — Miro + optional AI Council
 - **NumPy** - Numerical computing and array operations
 - **Node.js** - Bridge scripts for InstantDB Admin SDK writes
 
@@ -411,6 +474,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **Vite** - Fast build tool and dev server
 - **Tailwind CSS** - Utility-first CSS framework
 - **Axios** - HTTP client for API communication
+- **D3.js** - Co-occurrence, cross-draw transition, and hot-band Sankey views
 - **Recharts** - Chart library for data visualization
 - **React Router** - Client-side routing
 
@@ -441,7 +505,8 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **Anomaly Detection**: ~0.5-3 seconds per prediction (vectorized Monte Carlo)
 - **NashHotFilter**: Instant (Nash equilibrium + hot-number filter, no training)
 - **DRL Agent**: ~20-40 seconds per prediction (5 episodes, continuous learning)
-- **Total Prediction Time**: ~30-65 seconds for all models (parallel execution)
+- **Miro (LLM swarm)**: Highly variable — typically **tens of seconds to a few minutes** (two `chat.completions` JSON calls; server timeout **180s**). Requires `LLM_API_KEY`. Disable with `MIRO_STRATEGY_ENABLED=false` to save latency/cost.
+- **Total wall time**: Six core models (much runs in parallel) **plus** Miro when enabled — budget **several minutes** end-to-end on a slow LLM.
 
 ### Model Training & Learning
 - **Smart Retraining**: Models automatically retrain when switching between game types
@@ -499,8 +564,8 @@ MIT License
 1. **User selects game** → Auto-scrapes data from Google Sheets
 2. **Data validation** → Saves new results to InstantDB (skips duplicates)
 3. **User generates predictions** → System fetches historical data
-4. **ML models train & predict** → All 6 models process in parallel
-5. **Predictions saved** → Automatically stored in InstantDB
+4. **ML models train & predict** → Six core models in parallel; **Miro** (LLM) may follow
+5. **Predictions saved** → All picks including **Miro** stored in InstantDB
 6. **Accuracy calculated** → Auto-matched with results when available
 7. **DRL learning loop** → Agent improves through feedback
 8. **Results displayed** → Real-time updates on frontend with statistics

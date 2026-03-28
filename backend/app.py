@@ -1,5 +1,5 @@
 """FastAPI application with API endpoints - Using InstantDB only."""
-from fastapi import FastAPI, HTTPException, Query, Path, Body
+from fastapi import FastAPI, HTTPException, Query, Path, Body, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from datetime import datetime, date, timedelta
@@ -13,12 +13,24 @@ from ml_models.drl_agent import DRLAgent
 from ml_models.nash_hot_filter import NashHotFilterModel
 from utils.frequency_analysis import get_hot_numbers, get_cold_numbers, get_overdue_numbers, calculate_frequency
 from utils.error_distance_calculator import calculate_all_metrics
+from utils.graph_aggregates import cooccurrence_edges, markov_ball_transitions, sankey_hot_model_votes
+from services.apify_ingest import ingest_apify_run, auto_ingest_from_apify_actor
+from services.prediction_council import run_council_report, load_latest_predictions_for_council
+from services.memory_service import (
+    build_memory_context_for_council,
+    get_user_memory_record,
+    upsert_user_memory,
+)
 from config import Config
-from typing import Optional
+from typing import Optional, Any, Dict
 from pydantic import BaseModel
+from openai import APIConnectionError, AuthenticationError, RateLimitError
+import concurrent.futures
 import json
 import logging
 import numpy as np
+
+from services.miro_strategy import run_miro_strategy_predict
 
 # Configure logging to show INFO level messages
 logging.basicConfig(
@@ -26,6 +38,31 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _http_exception_from_llm_error(exc: Exception) -> HTTPException:
+    """Map OpenAI client errors to HTTP responses with actionable messages."""
+    if isinstance(exc, AuthenticationError):
+        return HTTPException(
+            status_code=401,
+            detail=(
+                "LLM API key was rejected. For OpenAI, keys normally start with sk- or sk-proj-. "
+                "If yours looks like k-proj-..., add the missing leading s. "
+                "Check LLM_API_KEY and LLM_BASE_URL in .env, then restart the server."
+            ),
+        )
+    if isinstance(exc, RateLimitError):
+        return HTTPException(
+            status_code=429,
+            detail="LLM rate limit exceeded. Try again in a few minutes.",
+        )
+    if isinstance(exc, APIConnectionError):
+        return HTTPException(
+            status_code=502,
+            detail=f"Could not reach LLM API: {exc!s}",
+        )
+    return HTTPException(status_code=500, detail=str(exc))
+
 
 def convert_to_python_types(obj):
     """Convert numpy types to native Python types for JSON serialization."""
@@ -80,6 +117,29 @@ class CalculateAccuracyRequest(BaseModel):
 
 class AutoCalculateAccuracyRequest(BaseModel):
     game_type: Optional[str] = None
+
+
+class ApifyIngestRequest(BaseModel):
+    run_id: str
+    game_type: Optional[str] = None
+
+
+class CouncilReportRequest(BaseModel):
+    predictions: Optional[Dict[str, Any]] = None
+    use_latest: bool = False
+    user_key: Optional[str] = None
+
+
+class MemoryUpsertRequest(BaseModel):
+    user_key: str
+    pinned_games: Optional[str] = None
+    preferences: Optional[str] = None
+    last_summary: Optional[str] = None
+
+
+class SankeyRequest(BaseModel):
+    predictions: Dict[str, Any]
+
 
 @app.get("/api/games")
 async def get_games():
@@ -529,22 +589,49 @@ async def scrape_data(request: ScrapeRequest):
             'games': stats.get('games', {})
         }
         
+        # Optional: run Apify Actor after Sheets (same game_type); merges into InstantDB
+        apify_result = None
+        apify_added = 0
+        if getattr(Config, "APIFY_AUTO_INGEST", True) and Config.APIFY_API_TOKEN and getattr(Config, "APIFY_ACTOR_ID", None):
+            try:
+                apify_result = auto_ingest_from_apify_actor(request.game_type)
+                if not apify_result.get("skipped"):
+                    apify_added = int(apify_result.get("total_added") or 0)
+                    logger.info("Apify auto-ingest: added %s rows (run_id=%s)", apify_added, apify_result.get("run_id"))
+            except Exception as apify_err:
+                logger.warning("Apify auto-ingest failed (non-critical): %s", apify_err)
+                apify_result = {"skipped": False, "error": str(apify_err), "total_added": 0}
+
+        combined_added = total_added + apify_added
+
         # Return success response
+        msg_parts = []
+        if total_added > 0:
+            msg_parts.append(f"Sheets: {total_added} new")
+        if apify_added > 0:
+            msg_parts.append(f"Apify: {apify_added} new")
+        if not msg_parts:
+            msg_core = "No new data to add (may already exist)"
+        else:
+            msg_core = " / ".join(msg_parts)
+
         response = {
             'success': True,
             'stats': frontend_stats,
             'timestamp': datetime.now().isoformat(),
-            'message': f'Successfully scraped {total_added} new results' if total_added > 0 else 'No new data to add (may already exist)'
+            'message': msg_core,
         }
-        
+        if apify_result is not None:
+            response["apify_ingest"] = apify_result
+
         # Log if no data was added (might be because all data already exists)
-        if total_added == 0 and not has_errors:
+        if combined_added == 0 and not has_errors:
             logger.info("No new data added - all results may already exist in database")
         else:
-            logger.info(f"✅ Successfully added {total_added} new results to InstantDB")
+            logger.info(f"✅ Sheets + Apify: {combined_added} new results to InstantDB (sheets={total_added}, apify={apify_added})")
         
         # Auto-calculate accuracy for new results (non-blocking)
-        if total_added > 0:
+        if combined_added > 0:
             try:
                 accuracy_count = await auto_calculate_accuracy_for_new_results(request.game_type)
                 if accuracy_count > 0:
@@ -579,8 +666,76 @@ async def scrape_data(request: ScrapeRequest):
             detail=f"Scraping failed: {str(e)}"
         )
 
+
+@app.post("/api/ingest/apify")
+async def ingest_apify_dataset(request: ApifyIngestRequest):
+    """Poll Apify run dataset, normalize rows, dedupe, write to InstantDB (additive to Sheets)."""
+    if not Config.APIFY_API_TOKEN:
+        raise HTTPException(status_code=503, detail="APIFY_API_TOKEN is not configured")
+    if request.game_type and request.game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game_type")
+    try:
+        result = ingest_apify_run(request.run_id, default_game_type=request.game_type)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        logger.exception("Apify ingest failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if result.get("total_added", 0) > 0:
+        try:
+            await auto_calculate_accuracy_for_new_results(request.game_type)
+        except Exception as e:
+            logger.warning("Auto-calculate after Apify ingest (non-critical): %s", e)
+
+    return {"success": True, **result, "timestamp": datetime.now().isoformat()}
+
+
+@app.post("/api/webhooks/apify")
+async def apify_webhook(
+    req: Request,
+    x_apify_secret: Optional[str] = Header(None, alias="X-Webhook-Secret"),
+):
+    """Optional webhook: same ingest as POST /api/ingest/apify when Apify notifies a finished run."""
+    if Config.APIFY_WEBHOOK_SECRET:
+        if x_apify_secret != Config.APIFY_WEBHOOK_SECRET:
+            raise HTTPException(status_code=401, detail="Invalid webhook secret")
+    try:
+        body = await req.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Expected JSON body")
+
+    run_id = body.get("runId") or body.get("run_id") or body.get("resource", {}).get("defaultRunId")
+    if not run_id:
+        raise HTTPException(status_code=400, detail="runId not found in payload")
+
+    game_type = body.get("game_type")
+    if game_type and game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game_type")
+
+    if not Config.APIFY_API_TOKEN:
+        raise HTTPException(status_code=503, detail="APIFY_API_TOKEN is not configured")
+
+    try:
+        result = ingest_apify_run(str(run_id), default_game_type=game_type)
+    except Exception as e:
+        logger.exception("Apify webhook ingest failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if result.get("total_added", 0) > 0:
+        try:
+            await auto_calculate_accuracy_for_new_results(game_type)
+        except Exception as e:
+            logger.warning("Auto-calculate after Apify webhook (non-critical): %s", e)
+
+    return {"success": True, **result}
+
+
 @app.post("/api/predict/{game_type}")
-async def generate_predictions(game_type: str = Path(..., description="Game type identifier")):
+async def generate_predictions(
+    game_type: str = Path(..., description="Game type identifier"),
+    include_council: bool = Query(False, description="Run LLM council after models (requires LLM_API_KEY)"),
+):
     """Get predictions from all 5 models."""
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
@@ -624,7 +779,6 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
                 start_time = time.time()
                 
                 # Generate prediction with timeout (longer timeout for DRL)
-                import concurrent.futures
                 timeout_seconds = 120 if model_name == 'DRL' else 60  # DRL needs more time
                 with concurrent.futures.ThreadPoolExecutor() as executor:
                     future = executor.submit(model_instance.predict, game_type)
@@ -694,17 +848,81 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
                 predictions[model_name] = {
                     'error': str(e)
                 }
-        
+
+        # Miro: LLM multi-agent meta-predictor (after base models; same DB shape as others)
+        if getattr(Config, "MIRO_STRATEGY_ENABLED", True):
+            miro_label = "Miro"
+            if Config.LLM_API_KEY:
+                logger.info("Running Miro strategy (LLM multi-agent)…")
+                try:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                        fut = pool.submit(run_miro_strategy_predict, game_type, predictions)
+                        miro_numbers = fut.result(timeout=180)
+                    previous_predictions = instantdb.get_predictions(game_type, limit=50)
+                    prev_preds = []
+                    for prev_pred in previous_predictions:
+                        if prev_pred.get("model_type") == miro_label:
+                            prev_preds.append(
+                                [
+                                    prev_pred.get("predicted_number_1"),
+                                    prev_pred.get("predicted_number_2"),
+                                    prev_pred.get("predicted_number_3"),
+                                    prev_pred.get("predicted_number_4"),
+                                    prev_pred.get("predicted_number_5"),
+                                    prev_pred.get("predicted_number_6"),
+                                ]
+                            )
+                    while len(prev_preds) < 5:
+                        prev_preds.append(None)
+                    prediction_data = {
+                        "target_draw_date": target_draw_date,
+                        "model_type": miro_label,
+                        "predicted_number_1": miro_numbers[0],
+                        "predicted_number_2": miro_numbers[1],
+                        "predicted_number_3": miro_numbers[2],
+                        "predicted_number_4": miro_numbers[3],
+                        "predicted_number_5": miro_numbers[4],
+                        "predicted_number_6": miro_numbers[5],
+                        "previous_prediction_1": prev_preds[0] if len(prev_preds) > 0 else None,
+                        "previous_prediction_2": prev_preds[1] if len(prev_preds) > 1 else None,
+                        "previous_prediction_3": prev_preds[2] if len(prev_preds) > 2 else None,
+                        "previous_prediction_4": prev_preds[3] if len(prev_preds) > 3 else None,
+                        "previous_prediction_5": prev_preds[4] if len(prev_preds) > 4 else None,
+                        "created_at": datetime.now().isoformat(),
+                    }
+                    new_prediction = instantdb.create_prediction(game_type, prediction_data)
+                    predictions[miro_label] = {
+                        "numbers": miro_numbers,
+                        "previous_predictions": prev_preds[:5],
+                        "prediction_id": new_prediction.get("id"),
+                    }
+                    logger.info("Miro prediction stored: %s", miro_numbers)
+                except concurrent.futures.TimeoutError:
+                    logger.error("Miro strategy timed out after 180s")
+                    predictions[miro_label] = {"error": "Miro strategy timed out (180s)"}
+                except Exception as e:
+                    logger.exception("Miro strategy failed")
+                    predictions[miro_label] = {"error": str(e)}
+            else:
+                predictions[miro_label] = {
+                    "error": "LLM_API_KEY is not configured (required for Miro strategy)",
+                }
+        else:
+            predictions["Miro"] = {
+                "error": "Miro strategy is disabled (MIRO_STRATEGY_ENABLED=false)",
+            }
+
         # COMPLETION LOGGING
+        n_cards = len(predictions)
         print("\n" + "=" * 80)
         print(f"PREDICTION GENERATION COMPLETE!")
-        print(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{total_models}")
-        print(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{total_models}")
+        print(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{n_cards}")
+        print(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{n_cards}")
         print("=" * 80)
         logger.info("\n" + "=" * 80)
         logger.info(f"🎉 PREDICTION GENERATION COMPLETE!")
-        logger.info(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{total_models}")
-        logger.info(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{total_models}")
+        logger.info(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{n_cards}")
+        logger.info(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{n_cards}")
         logger.info("=" * 80)
         
         # Auto-calculate accuracy for newly generated predictions (non-blocking background task)
@@ -724,20 +942,123 @@ async def generate_predictions(game_type: str = Path(..., description="Game type
             logger.info(f"✅ Triggered background auto-calculation of accuracy for {game_type}")
         except Exception as e:
             logger.warning(f"Failed to trigger auto-calculation after prediction generation: {e}")
-        
-        return {
+
+        council_report = None
+        if include_council and Config.LLM_API_KEY and getattr(Config, "LLM_COUNCIL_ENABLED", True):
+            try:
+                council_report = run_council_report(game_type, predictions, "")
+            except AuthenticationError as e:
+                logger.warning("Council report auth failed (non-critical): %s", e)
+                council_report = {"error": "LLM API key rejected; check LLM_API_KEY in .env"}
+            except Exception as e:
+                logger.warning("Council report failed (non-critical): %s", e)
+                council_report = {"error": str(e)}
+
+        response_payload = {
             'success': True,
             'game_type': game_type,
             'target_draw_date': target_draw_date,
             'predictions': predictions,
             'timestamp': datetime.now().isoformat()
         }
+        if council_report is not None:
+            response_payload['council_report'] = council_report
+        return response_payload
     
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"❌ PREDICTION GENERATION FAILED: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/predict/{game_type}/council-report")
+async def council_report(game_type: str, body: CouncilReportRequest = Body(...)):
+    """LLM council summary + six-agent JSON (advisory)."""
+    if game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    if not Config.LLM_API_KEY:
+        raise HTTPException(status_code=503, detail="LLM_API_KEY is not configured")
+
+    preds = body.predictions
+    if body.use_latest or not preds:
+        preds = load_latest_predictions_for_council(game_type)
+        if not preds:
+            raise HTTPException(status_code=400, detail="No predictions found; run predict first or pass predictions")
+
+    mem = build_memory_context_for_council(body.user_key)
+    try:
+        report = run_council_report(game_type, preds, mem)
+    except (AuthenticationError, RateLimitError, APIConnectionError) as e:
+        logger.warning("council-report LLM error: %s", e)
+        raise _http_exception_from_llm_error(e)
+    except Exception as e:
+        logger.exception("council-report failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if body.user_key:
+        try:
+            summary_text = json.dumps(report.get("summary", {}), ensure_ascii=False)[:8000]
+            upsert_user_memory(body.user_key, last_summary=summary_text)
+        except Exception as e:
+            logger.debug("Optional user_memory upsert failed: %s", e)
+
+    return {"success": True, "report": report}
+
+
+@app.get("/api/memory/user/{user_key:path}")
+async def get_user_memory(user_key: str):
+    rec = get_user_memory_record(user_key)
+    return {"user_key": user_key, "record": rec}
+
+
+@app.post("/api/memory/user")
+async def post_user_memory(body: MemoryUpsertRequest):
+    try:
+        out = upsert_user_memory(
+            body.user_key,
+            pinned_games=body.pinned_games,
+            preferences=body.preferences,
+            last_summary=body.last_summary,
+        )
+        return {"success": True, **out}
+    except Exception as e:
+        logger.exception("user_memory upsert failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/graphs/{game_type}/cooccurrence")
+async def graph_cooccurrence(game_type: str):
+    if game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    try:
+        return cooccurrence_edges(game_type)
+    except Exception as e:
+        logger.exception("cooccurrence graph failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/graphs/{game_type}/markov-edges")
+async def graph_markov_edges(game_type: str):
+    if game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    try:
+        return markov_ball_transitions(game_type)
+    except Exception as e:
+        logger.exception("markov-edges graph failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/graphs/{game_type}/sankey")
+async def graph_sankey(game_type: str, body: SankeyRequest):
+    if game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail="Invalid game type")
+    try:
+        return sankey_hot_model_votes(game_type, body.predictions)
+    except Exception as e:
+        logger.exception("sankey graph failed")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/api/predictions/{game_type}")
 async def get_predictions(

@@ -186,3 +186,21 @@ class Config:
         'markov_sum_buckets': 5,
     }
 
+    # Apify (PCSO / bulletin JSON ingest — separate from Google Sheets)
+    APIFY_API_TOKEN = os.getenv('APIFY_API_TOKEN', '') or None
+    APIFY_ACTOR_ID = os.getenv('APIFY_ACTOR_ID', '') or None  # e.g. your-name~pcso-scraper
+    APIFY_AUTO_INGEST = os.getenv('APIFY_AUTO_INGEST', 'true').lower() in ('1', 'true', 'yes')
+    APIFY_WEBHOOK_SECRET = os.getenv('APIFY_WEBHOOK_SECRET', '') or None
+
+    # OpenAI-compatible LLM (council / summaries)
+    LLM_API_KEY = os.getenv('LLM_API_KEY', '') or None
+    LLM_BASE_URL = os.getenv('LLM_BASE_URL', 'https://api.openai.com/v1')
+    LLM_MODEL_NAME = os.getenv('LLM_MODEL_NAME', 'gpt-4o-mini')
+    LLM_COUNCIL_ENABLED = os.getenv('LLM_COUNCIL_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+    # Seventh prediction (LLM multi-agent Miro); requires LLM_API_KEY when enabled
+    MIRO_STRATEGY_ENABLED = os.getenv('MIRO_STRATEGY_ENABLED', 'true').lower() in ('1', 'true', 'yes')
+
+    # Optional Zep Cloud graph search (enriches council when graph + key set)
+    ZEP_API_KEY = os.getenv('ZEP_API_KEY', '') or None
+    ZEP_GRAPH_ID = os.getenv('ZEP_GRAPH_ID', '') or None
+

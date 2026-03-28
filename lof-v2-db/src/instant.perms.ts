@@ -84,6 +84,14 @@ const rules = {
       delete: "true",
     },
   },
+  user_memory: {
+    allow: {
+      view: "true",
+      create: "true",
+      update: "true",
+      delete: "true",
+    },
+  },
 } satisfies InstantRules;
 
 export default rules;

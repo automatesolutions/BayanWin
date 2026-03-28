@@ -211,6 +211,15 @@ const _schema = i.schema({
       distance_metrics: i.string().optional(),
       calculated_at: i.string(),
     }),
+    // Optional user prefs / council memory (backend Admin SDK)
+    user_memory: i.entity({
+      user_key: i.string().unique().indexed(),
+      pinned_games: i.string().optional(),
+      preferences: i.string().optional(),
+      last_summary: i.string().optional(),
+      created_at: i.string(),
+      updated_at: i.string(),
+    }),
   },
   links: {
     $usersLinkedPrimaryUser: {
