@@ -1,6 +1,18 @@
 # BayanWin 🎯
 
 A modern, full-stack web application that scrapes lottery results from Google Sheets (and optionally [Apify](#apify-optional-ingest)), stores them in InstantDB, and provides **six core ML prediction models** plus **Miro** — an optional **LLM swarm-style** meta-predictor — for multiple lottery games.
+<img width="731" height="200" alt="image" src="https://github.com/user-attachments/assets/8afe2bdd-1548-4047-92cd-474de0942c87" />
+
+<img width="700" height="447" alt="image" src="https://github.com/user-attachments/assets/5b0d852c-e7ba-49c2-97fa-53e1d81ca460" />
+
+
+<img width="683" height="454" alt="image" src="https://github.com/user-attachments/assets/453a6dc2-b114-4b73-91e6-8f814d237fdf" />
+
+
+<img width="688" height="368" alt="image" src="https://github.com/user-attachments/assets/581d26c0-73c6-497e-86cb-f07c64ae8fbf" />
+
+
+
 
 > 📚 **Detailed Documentation**: For comprehensive system documentation including workflow flowchart and architecture details, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)
 
