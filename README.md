@@ -32,7 +32,9 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
 
 - **Automated Data Scraping**: 
   - Auto-scrapes new data when a game is selected
-  - Uses pandas to read CSV exports directly from Google Sheets
+  - Default path uses the **Google Sheets API** (via `gspread`) to read only a sliding row window when `GOOGLE_SERVICE_ACCOUNT_FILE` is set; cursors are stored in InstantDB (`sheet_ingest_cursors`)
+  - Falls back to a **full public CSV export** per scrape when service-account credentials are missing
+  - `POST /api/scrape` accepts **`full_sync: true`** (body or `?full_sync=true`) to re-download the whole sheet, reconcile duplicates, and reset the ingest cursor — schedule weekly for safety
   - Automatically detects and skips duplicate entries based on draw_date and draw_number
   - Supports 5 lottery games with separate data sources
   
@@ -107,7 +109,7 @@ LOF_V2/
 │   ├── config.py        # Configuration (InstantDB credentials, Google Sheets IDs)
 │   ├── services/        # InstantDB, Apify ingest, prediction council, Miro LLM strategy
 │   ├── ml_models/       # 6 ML prediction models
-│   ├── scrapers/        # Google Sheets scraper (pandas-based)
+│   ├── scrapers/        # Google Sheets scraper (CSV + gspread incremental)
 │   ├── scripts/         # Node.js bridge scripts for InstantDB writes
 │   │   ├── save_results.js      # Save lottery results via Admin SDK
 │   │   ├── save_predictions.js   # Save predictions via Admin SDK
@@ -184,9 +186,12 @@ Create a `.env` file in the `backend` directory:
 INSTANTDB_APP_ID=your-app-id-here
 INSTANTDB_ADMIN_TOKEN=your-admin-token-here
 
-# Google Sheets (Optional - uses public sheets by default)
-# Only needed if sheets are private
+# Google Sheets
+# Service account JSON: required for private sheets and for incremental API sync (recommended).
 GOOGLE_SERVICE_ACCOUNT_FILE=path/to/service-account.json
+SHEETS_INCREMENTAL_ENABLED=true
+SHEETS_INCREMENTAL_WINDOW=250
+SHEETS_WORKSHEET_NAME=Sheet1
 
 # Optional (for uvicorn reload)
 DEBUG=True
@@ -209,9 +214,11 @@ APIFY_AUTO_INGEST=true
 - **Admin Token**: https://www.instantdb.com/dash → Admin → Secret field (click to reveal)
 
 **Google Sheets:**
-- The app uses publicly accessible Google Sheets by default
-- Google Sheets IDs are configured in `backend/config.py`
-- If sheets are private, provide service account credentials
+- Sheet IDs are configured in `backend/config.py`
+- With **`GOOGLE_SERVICE_ACCOUNT_FILE`** set (and the spreadsheet shared with that service account as **Viewer**, **Google Sheets API** enabled on the GCP project), scrapes use **incremental range reads** and persist the next row in InstantDB
+- Without credentials, the backend uses the **public CSV export URL** every time (full download)
+- **Edits or new rows inserted above the current cursor** are not seen until you run a **`full_sync`** scrape (full CSV + cursor reset)
+- Assume a single header row on the tab named by `SHEETS_WORKSHEET_NAME` (default `Sheet1`)
 
 7. **Deploy InstantDB Schema:**
 
@@ -299,7 +306,10 @@ The `.env` file in the `backend` directory should contain:
 |----------|----------|-------------|
 | `INSTANTDB_APP_ID` | ✅ Yes | Your InstantDB App ID from dashboard |
 | `INSTANTDB_ADMIN_TOKEN` | ✅ Yes | Your InstantDB Admin Token (Secret) |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | ❌ No | Path to Google service account JSON (only if sheets are private) |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | ❌ No | Service account JSON — private sheets + incremental Sheets API sync |
+| `SHEETS_INCREMENTAL_ENABLED` | ❌ No | `true`/`false` — disable API incremental path (default true) |
+| `SHEETS_INCREMENTAL_WINDOW` | ❌ No | Rows per incremental `get` (default `250`) |
+| `SHEETS_WORKSHEET_NAME` | ❌ No | Worksheet tab name (default `Sheet1`) |
 | `DEBUG` | ❌ No | Set to `True` for uvicorn auto-reload (development) |
 | `LLM_API_KEY` | ✅ For Miro / Council | OpenAI-compatible API key (`sk-` or `sk-proj-`) |
 | `LLM_BASE_URL` | ❌ No | Default `https://api.openai.com/v1` |
@@ -312,7 +322,7 @@ The `.env` file in the `backend` directory should contain:
 **Important:** 
 - Never commit `.env` files to Git
 - InstantDB credentials are required for backend to function
-- Google Sheets are accessed via public CSV export by default
+- Without `GOOGLE_SERVICE_ACCOUNT_FILE`, Google Sheets are accessed via public CSV export only (full sheet each scrape)
 - Node.js and `@instantdb/admin` are required for saving data
 - No PostgreSQL connection string needed - InstantDB handles everything!
 
@@ -335,7 +345,9 @@ Downstream **Miro**, graphs (co-occurrence, transitions), and statistics **autom
 - `GET /api/results/{game_type}` - Get historical results (paginated, sorted by draw_date)
   - Query params: `page`, `limit`
 - `POST /api/scrape` - Trigger data scraping from Google Sheets
-  - Body: `{ "game_type": "ultra_lotto_6_58" }` (optional - scrapes all games if omitted)
+  - Body: `{ "game_type": "ultra_lotto_6_58", "full_sync": false }` (`game_type` optional — scrapes all games if omitted)
+  - Query: `?full_sync=true` — same as `full_sync: true` in the body (weekly reconcile recommended)
+  - Response stats include per-game `sync_mode`, `rows_fetched`, and `cursor_after` when available
   - Auto-scrapes when a game is selected in the frontend
   - Automatically skips duplicate entries based on draw_date and draw_number
 
@@ -419,7 +431,7 @@ Each stage below maps to the actual code paths so you can trace requests end-to-
 
 - **Frontend:** In `frontend/src/App.jsx`, `handleGameSelect(gameType)` runs when the user picks a game. It sets `selectedGame`, then calls `scrapeData({ game_type: gameType })` from `frontend/src/services/api.js`.
 - **API call:** `api.js` uses Axios with `baseURL: API_BASE_URL` (from `frontend/src/utils/constants.js`, default `http://localhost:5000`). So the request is `POST /api/scrape` with body `{ game_type: "ultra_lotto_6_58" }` (or the chosen game).
-- **Backend:** In `backend/app.py`, the route `@app.post("/api/scrape")` (around line 454) receives the request. It builds a `GoogleSheetsScraper()` (from `backend/scrapers/google_sheets_scraper.py`), then calls `scraper.scrape_game(request.game_type)` or `scraper.scrape_all_games()`. Scraped rows are validated and sent to InstantDB via `backend/services/instantdb_client.py` (writes often go through Node.js bridge scripts in `backend/scripts/`, e.g. `save_results.js`).
+- **Backend:** In `backend/app.py`, `@app.post("/api/scrape")` receives the request. It builds a `GoogleSheetsScraper()`, then calls `scrape_game(..., full_sync=...)` or `scrape_all_games(full_sync=...)`. Incremental pulls use `gspread` when credentials exist; `full_sync` forces the CSV path and resets the stored cursor. Rows are written via `instantdb_client` / `save_results.js`.
 - **After scrape:** If new results were added, the backend calls `auto_calculate_accuracy_for_new_results()` and may trigger DRL learning from new accuracy records. The response (e.g. `success`, `stats`, `message`) is returned to the frontend.
 
 ### Stage 2: User clicks “Generate Predictions”
@@ -493,7 +505,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 ## 📝 Important Notes
 
 ### Data Management
-- **Data Source**: Lottery data is scraped from publicly accessible Google Sheets
+- **Data Source**: Lottery data is scraped from Google Sheets (public CSV or Sheets API + service account)
 - **Auto-Scraping**: Data is automatically scraped when a game is selected
 - **Duplicate Detection**: System automatically skips duplicate entries based on draw_date and draw_number
 - **Auto-Accuracy Calculation**: Accuracy is automatically calculated when new results are scraped
@@ -534,7 +546,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **Credentials**: InstantDB Admin Token should be kept secret and never shared
 - **Google Sheets**: Service account credentials (if used) should be kept secret
 - **Configuration**: Use environment variables for all sensitive configuration
-- **Data Access**: Google Sheets are accessed via public CSV export (no authentication needed for public sheets)
+- **Data Access**: Prefer a locked-down spreadsheet shared with a service account; public CSV remains a fallback without credentials
 - **API Security**: In production, configure CORS middleware to allow only specific origins
 
 ## 📚 Documentation

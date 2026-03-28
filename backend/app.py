@@ -110,6 +110,7 @@ class ScrapeRequest(BaseModel):
     start_date: Optional[str] = None
     end_date: Optional[str] = None
     game_type: Optional[str] = None  # If specified, only scrape this game
+    full_sync: Optional[bool] = False  # Full CSV + reset ingest cursor (reconciliation)
 
 class CalculateAccuracyRequest(BaseModel):
     result_id: str  # Changed to string for InstantDB IDs
@@ -513,20 +514,24 @@ async def trigger_auto_calculate_accuracy(
         )
 
 @app.post("/api/scrape")
-async def scrape_data(request: ScrapeRequest):
+async def scrape_data(
+    request: ScrapeRequest,
+    full_sync: Optional[bool] = Query(None, description="If true, full CSV reconcile and reset sheet ingest cursor (overrides body when true)"),
+):
     """Trigger data scraping from Google Sheets. Can scrape all games or a specific game."""
     try:
         logger.info("Starting scrape operation...")
         scraper = GoogleSheetsScraper()
-        
+        use_full_sync = bool(request.full_sync) or (full_sync is True)
+
         try:
             # If game_type is specified, scrape only that game
             if request.game_type:
                 if request.game_type not in Config.GAMES:
                     raise HTTPException(status_code=400, detail=f"Invalid game type: {request.game_type}")
                 
-                logger.info(f"Scraping single game: {request.game_type}")
-                game_stats = await scraper.scrape_game(request.game_type)
+                logger.info("Scraping single game: %s (full_sync=%s)", request.game_type, use_full_sync)
+                game_stats = await scraper.scrape_game(request.game_type, full_sync=use_full_sync)
                 
                 # Format response for single game
                 stats = {
@@ -541,8 +546,8 @@ async def scrape_data(request: ScrapeRequest):
                 }
             else:
                 # Scrape all games
-                logger.info("Scraping all games")
-                stats = await scraper.scrape_all_games()
+                logger.info("Scraping all games (full_sync=%s)", use_full_sync)
+                stats = await scraper.scrape_all_games(full_sync=use_full_sync)
             
             logger.info(f"Scrape completed. Stats: {stats}")
         except Exception as scrape_error:
@@ -586,7 +591,7 @@ async def scrape_data(request: ScrapeRequest):
                 if game_stats.get('added', 0) > 0
             ],
             'summary': stats.get('summary', {}),
-            'games': stats.get('games', {})
+            'games': stats.get('games', {}),
         }
         
         # Optional: run Apify Actor after Sheets (same game_type); merges into InstantDB
@@ -618,6 +623,7 @@ async def scrape_data(request: ScrapeRequest):
         response = {
             'success': True,
             'stats': frontend_stats,
+            'full_sync': use_full_sync,
             'timestamp': datetime.now().isoformat(),
             'message': msg_core,
         }

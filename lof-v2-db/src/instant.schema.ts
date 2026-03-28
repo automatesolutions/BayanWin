@@ -220,6 +220,14 @@ const _schema = i.schema({
       created_at: i.string(),
       updated_at: i.string(),
     }),
+    // Google Sheets incremental ingest cursor (one row per game_type; backend Admin SDK)
+    sheet_ingest_cursors: i.entity({
+      game_type: i.string().unique().indexed(),
+      next_row: i.number(),
+      sheet_id: i.string().optional(),
+      updated_at: i.string(),
+      created_at: i.string(),
+    }),
   },
   links: {
     $usersLinkedPrimaryUser: {
