@@ -10,7 +10,9 @@ const PredictionCard = ({ modelName, numbers, previousPredictions, predictionId,
     MarkovChain: 'State transition model for sequence prediction',
     AnomalyDetection: 'Normal Distribution - highest probability patterns',
     NashHotFilter: 'Nash Equilibrium + Hot-Number filter (smart wheel, 3-even/3-odd)',
-    DRL: 'Deep Reinforcement Learning with 3 feedback loops'
+    DRL: 'Deep Reinforcement Learning with 3 feedback loops',
+    Miro:
+      'LLM multi-agent synthesis: six model voices + chairman over graphs, stats, hot/cold, overdue, Gaussian sum band, and accuracy—advisory only'
   };
 
   // Handle loading state

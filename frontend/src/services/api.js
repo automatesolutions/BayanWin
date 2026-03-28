@@ -50,8 +50,10 @@ export const getPredictions = (gameType, limit = 10) => {
   });
 };
 
-export const generatePredictions = (gameType) => {
-  return api.post(`/api/predict/${gameType}`);
+export const generatePredictions = (gameType, options = {}) => {
+  const params = {};
+  if (options.includeCouncil) params.include_council = true;
+  return api.post(`/api/predict/${gameType}`, {}, { params });
 };
 
 export const getStatistics = (gameType) => {
@@ -81,6 +83,34 @@ export const scrapeData = (data = {}) => {
 
 export const autoCalculateAccuracy = (gameType = null) => {
   return api.post('/api/accuracy/auto-calculate', { game_type: gameType || null });
+};
+
+export const ingestApifyRun = (runId, gameType = null) => {
+  return api.post('/api/ingest/apify', { run_id: runId, game_type: gameType || null });
+};
+
+export const fetchCouncilReport = (gameType, body) => {
+  return api.post(`/api/predict/${gameType}/council-report`, body);
+};
+
+export const getCooccurrenceGraph = (gameType) => {
+  return api.get(`/api/graphs/${gameType}/cooccurrence`);
+};
+
+export const getMarkovEdgesGraph = (gameType) => {
+  return api.get(`/api/graphs/${gameType}/markov-edges`);
+};
+
+export const postSankeyGraph = (gameType, predictionsPayload) => {
+  return api.post(`/api/graphs/${gameType}/sankey`, { predictions: predictionsPayload });
+};
+
+export const upsertUserMemory = (payload) => {
+  return api.post('/api/memory/user', payload);
+};
+
+export const getUserMemory = (userKey) => {
+  return api.get(`/api/memory/user/${encodeURIComponent(userKey)}`);
 };
 
 export default api;
