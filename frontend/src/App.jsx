@@ -3,45 +3,62 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import GameSelector from './components/GameSelector';
 import PredictionDisplay from './components/PredictionDisplay';
-import HistoricalResults from './components/HistoricalResults';
+import LatestResults from './components/LatestResults';
 import StatisticsPanel from './components/StatisticsPanel';
 import ErrorDistanceAnalysis from './components/ErrorDistanceAnalysis';
 import CooccurrenceGraph from './components/CooccurrenceGraph';
 import MarkovGraph from './components/MarkovGraph';
-import HotModelSankey from './components/HotModelSankey';
 import CouncilPanel from './components/CouncilPanel';
-import { generatePredictions, scrapeData } from './services/api';
+import { generatePredictionsStream, scrapeData } from './services/api';
 
 function App() {
   const [selectedGame, setSelectedGame] = useState(null);
   const [predictions, setPredictions] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [scraping, setScraping] = useState(false);
+  const [resultsRefresh, setResultsRefresh] = useState(0);
 
-  const handleGameSelect = async (gameType) => {
+  const handleGameSelect = (gameType) => {
     setSelectedGame(gameType);
     setPredictions(null);
-
-    setScraping(true);
-    try {
-      await scrapeData({ game_type: gameType });
-    } catch (error) {
-      console.warn('Auto-scrape skipped or failed:', error.response?.data?.detail || error.message);
-    } finally {
-      setScraping(false);
-    }
+    // One refresh: load whatever is already in the DB for this game
+    setResultsRefresh((n) => n + 1);
+    scrapeData({ game_type: gameType })
+      .then((res) => {
+        const summary = res.data?.stats?.summary;
+        const sheetsAdded = Number(summary?.total_added ?? 0);
+        const apifyAdded = Number(res.data?.apify_ingest?.total_added ?? 0);
+        // Second refresh only when ingest actually wrote rows (avoids duplicate GETs)
+        if (sheetsAdded + apifyAdded > 0) {
+          setResultsRefresh((n) => n + 1);
+        }
+      })
+      .catch((error) => {
+        console.error('Sheet ingest failed:', error.response?.data?.detail || error.message);
+      });
   };
 
   const handleGeneratePredictions = async () => {
     if (!selectedGame) return;
 
     setLoading(true);
+    setPredictions({});
     try {
-      const response = await generatePredictions(selectedGame);
-      setPredictions(response.data.predictions);
+      await generatePredictionsStream(selectedGame, {
+        onEvent: (msg) => {
+          if (msg.event === 'model' && msg.predictions) {
+            setPredictions((prev) => ({ ...(prev || {}), ...msg.predictions }));
+          }
+          if (msg.event === 'done' && msg.predictions) {
+            setPredictions(msg.predictions);
+          }
+          if (msg.event === 'error') {
+            alert('Prediction failed: ' + (msg.detail || 'Unknown error'));
+          }
+        },
+      });
     } catch (error) {
       console.error('Error generating predictions:', error);
-      alert('Failed to generate predictions: ' + (error.response?.data?.error || error.message));
+      alert('Failed to generate predictions: ' + (error.response?.data?.detail || error.message));
     } finally {
       setLoading(false);
     }
@@ -56,7 +73,6 @@ function App() {
           selectedGame={selectedGame}
           onGameSelect={handleGameSelect}
           onGeneratePredictions={handleGeneratePredictions}
-          autoScraping={scraping}
         />
 
         {selectedGame && (
@@ -66,14 +82,16 @@ function App() {
             <CouncilPanel gameType={selectedGame} />
 
             <div className="space-y-6 mt-6">
-              <HistoricalResults gameType={selectedGame} key={`${selectedGame}-${scraping}`} />
+              <LatestResults
+                key={selectedGame}
+                gameType={selectedGame}
+                refreshKey={resultsRefresh}
+              />
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                 <CooccurrenceGraph gameType={selectedGame} />
                 <MarkovGraph gameType={selectedGame} />
               </div>
-              <HotModelSankey gameType={selectedGame} predictions={predictions} />
-
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <StatisticsPanel gameType={selectedGame} />
                 <ErrorDistanceAnalysis gameType={selectedGame} />

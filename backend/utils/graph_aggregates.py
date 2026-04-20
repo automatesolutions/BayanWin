@@ -3,10 +3,14 @@ from __future__ import annotations
 
 from collections import Counter
 from datetime import datetime
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from config import Config
 from services.instantdb_client import instantdb
 from utils.frequency_analysis import get_hot_numbers
+from utils.ttl_cache import get_or_set
+
+_graph_agg_cache: Dict[Tuple[str, str, int], Any] = {}
 
 
 def _result_numbers(r: Dict[str, Any]) -> List[int]:
@@ -26,7 +30,7 @@ def _sort_results_by_date(results: List[Dict[str, Any]]) -> List[Dict[str, Any]]
     return sorted(results, key=key_fn)
 
 
-def cooccurrence_edges(game_type: str, limit_draws: int = 2000) -> Dict[str, Any]:
+def _cooccurrence_edges_compute(game_type: str, limit_draws: int) -> Dict[str, Any]:
     results = instantdb.get_results(game_type, limit=limit_draws, offset=0, order_by="draw_date.desc")
     pairs: Counter = Counter()
     for r in results:
@@ -46,7 +50,15 @@ def cooccurrence_edges(game_type: str, limit_draws: int = 2000) -> Dict[str, Any
     return {"game_type": game_type, "edges": edges, "draws_used": len(results)}
 
 
-def markov_ball_transitions(game_type: str, limit_draws: int = 2000) -> Dict[str, Any]:
+def cooccurrence_edges(game_type: str, limit_draws: Optional[int] = None) -> Dict[str, Any]:
+    lim = int(limit_draws if limit_draws is not None else Config.GRAPH_AGG_LIMIT_DRAWS)
+    lim = max(50, min(lim, 5000))
+    ttl = float(getattr(Config, "GRAPH_AGG_CACHE_TTL_SEC", 120))
+    key = (game_type, "co", lim)
+    return get_or_set(_graph_agg_cache, ttl, key, lambda: _cooccurrence_edges_compute(game_type, lim))
+
+
+def _markov_ball_transitions_compute(game_type: str, limit_draws: int) -> Dict[str, Any]:
     """Directed counts: number x in draw t -> number y in draw t+1 (any pair between draws)."""
     results = instantdb.get_results(game_type, limit=limit_draws, offset=0, order_by="draw_date.asc")
     ordered = _sort_results_by_date(results)
@@ -67,6 +79,14 @@ def markov_ball_transitions(game_type: str, limit_draws: int = 2000) -> Dict[str
         for (s, t), w in trans.most_common(300)
     ]
     return {"game_type": game_type, "edges": edges, "transition_pairs": len(trans)}
+
+
+def markov_ball_transitions(game_type: str, limit_draws: Optional[int] = None) -> Dict[str, Any]:
+    lim = int(limit_draws if limit_draws is not None else Config.GRAPH_AGG_LIMIT_DRAWS)
+    lim = max(50, min(lim, 5000))
+    ttl = float(getattr(Config, "GRAPH_AGG_CACHE_TTL_SEC", 120))
+    key = (game_type, "mk", lim)
+    return get_or_set(_graph_agg_cache, ttl, key, lambda: _markov_ball_transitions_compute(game_type, lim))
 
 
 def sankey_hot_model_votes(

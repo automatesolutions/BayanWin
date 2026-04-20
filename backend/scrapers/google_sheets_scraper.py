@@ -1,21 +1,173 @@
 """Google Sheets scraper for PCSO lottery historical data."""
-from datetime import datetime
+from datetime import datetime, date, timedelta
 from typing import Any, List, Dict, Optional, Tuple
 from services.instantdb_client import instantdb
 from config import Config
 import logging
 import re
 import os
+import time
+import urllib.parse
 import pandas as pd
+import requests
 
 logger = logging.getLogger(__name__)
 
 class GoogleSheetsScraper:
-    """Scraper for reading PCSO lottery data from Google Sheets."""
+    """
+    PCSO lottery data from Google Sheets.
+
+    - **Incremental** (recommended): When `GOOGLE_SERVICE_ACCOUNT_FILE` exists, the sheet is shared
+      with that service account, and `SHEETS_INCREMENTAL_ENABLED` is true, only a small row range
+      is read via the Sheets API (see stored cursor in InstantDB). New rows are merged; existing
+      `(draw_date, draw_number)` keys are skipped.
+    - **Tail via Sheets REST**: If gspread incremental fails (e.g. API 400) but credentials exist,
+      the same service account can call `values.get` for `A{cursor}:Z…` only — avoids downloading and
+      parsing the whole CSV when you added one row.
+    - **Full CSV**: If credentials are missing or `full_sync=true`, the public CSV export is used
+      (downloads the **entire** sheet each time). Parsed rows are still **deduplicated** against
+      InstantDB before insert — only missing draws are written.
+    - **Append-only dedupe** (default on for CSV fallback): Only recent sheet rows + a tail window are
+      checked against InstantDB, so routine syncs do not run thousands of OR queries. Use `full_sync`
+      to re-check the whole sheet.
+    """
     
     def __init__(self):
         self.games = Config.GAMES
         self.sheet_ids = Config.GOOGLE_SHEETS
+        self._sheet_header_row: Dict[str, List] = {}
+        self._csv_cache: Dict[str, Tuple[float, pd.DataFrame]] = {}
+
+    @staticmethod
+    def _a1_range(ws_name: str, row_start: int, row_end: int) -> str:
+        """Build A1 notation for columns A–Z on a worksheet (quoted for special names)."""
+        safe = "'" + str(ws_name).replace("'", "''") + "'"
+        return f"{safe}!A{row_start}:Z{row_end}"
+
+    def _sheets_rest_get_values(self, sheet_id: str, range_a1: str) -> Optional[List[List[Any]]]:
+        """
+        Read a cell range via Sheets API v4 (HTTP). Returns None on failure so caller can fall back.
+        Uses the same service account file as gspread incremental.
+        """
+        try:
+            from google.oauth2.service_account import Credentials
+            from google.auth.transport.requests import Request as GARequest
+
+            scopes = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
+            creds = Credentials.from_service_account_file(
+                str(Config.GOOGLE_SERVICE_ACCOUNT_FILE), scopes=scopes
+            )
+            creds.refresh(GARequest())
+            enc = urllib.parse.quote(range_a1, safe="")
+            url = f"https://sheets.googleapis.com/v4/spreadsheets/{sheet_id}/values/{enc}"
+            r = requests.get(
+                url,
+                headers={"Authorization": f"Bearer {creds.token}"},
+                timeout=45,
+            )
+            if r.status_code != 200:
+                logger.warning(
+                    "Sheets REST values.get %s → HTTP %s %s",
+                    range_a1,
+                    r.status_code,
+                    (r.text or "")[:240],
+                )
+                return None
+            return r.json().get("values", [])
+        except Exception as e:
+            logger.warning("Sheets REST read failed: %s", e)
+            return None
+
+    def _try_tail_scrape_via_sheets_rest(
+        self,
+        game_type: str,
+        sheet_id: str,
+        game_name: str,
+        sync_mode: str,
+    ) -> Optional[Dict]:
+        """
+        When a cursor exists, read only new rows via Sheets REST (not full gviz CSV).
+        Returns a stats dict if this path handled the scrape; None to use full CSV.
+        """
+        rec = instantdb.get_sheet_cursor(game_type)
+        if not rec or rec.get("next_row") is None:
+            return None
+        if rec.get("sheet_id") and str(rec.get("sheet_id")) != str(sheet_id):
+            return None
+
+        next_row = int(rec["next_row"])
+        ws = Config.SHEETS_WORKSHEET_NAME
+        wcfg = int(Config.SHEETS_INCREMENTAL_WINDOW)
+        window = max(5, min(wcfg, 500))
+        max_passes = min(40, int(Config.SHEETS_TAIL_MAX_PASSES))
+
+        probe = self._sheets_rest_get_values(sheet_id, self._a1_range(ws, next_row, next_row))
+        if probe is None:
+            return None
+        if not probe or not probe[0] or not any(str(c).strip() for c in probe[0] if c is not None):
+            logger.info(
+                "Sheets tail probe: no data at row %s — skipping full CSV (%s)",
+                next_row,
+                sync_mode,
+            )
+            return self._finalize_parse_and_write(
+                game_type,
+                game_name,
+                [],
+                0,
+                f"{sync_mode}_tail_probe_no_new_rows",
+                next_row,
+            )
+
+        if sheet_id not in self._sheet_header_row:
+            header_row = self._sheets_rest_get_values(sheet_id, self._a1_range(ws, 1, 1))
+            if not header_row or not header_row[0]:
+                logger.warning("Sheets REST: could not read header row 1; falling back to CSV")
+                return None
+            self._sheet_header_row[sheet_id] = header_row[0]
+
+        header = self._sheet_header_row[sheet_id]
+        all_parsed: List[Dict] = []
+        rows_fetched = 0
+        cur = next_row
+
+        for _ in range(max_passes):
+            end_r = cur + window - 1
+            chunk = self._sheets_rest_get_values(sheet_id, self._a1_range(ws, cur, end_r))
+            if chunk is None:
+                logger.warning(
+                    "Sheets REST tail read failed at row %s; falling back to full CSV",
+                    cur,
+                )
+                return None
+            if not chunk:
+                break
+            df = self._dataframe_from_matrix(header, chunk)
+            part = self._parse_sheet_data(df, game_type)
+            all_parsed.extend(part)
+            rows_fetched += len(chunk)
+            cur += len(chunk)
+            if len(chunk) < window:
+                break
+
+        try:
+            instantdb.upsert_sheet_cursor(game_type, cur, sheet_id)
+        except Exception as e:
+            logger.warning("Could not persist sheet cursor after REST tail read: %s", e)
+
+        logger.info(
+            "Sheets REST tail: read ~%s row(s) from row %s (not full CSV)",
+            rows_fetched,
+            next_row,
+        )
+        return self._finalize_parse_and_write(
+            game_type,
+            game_name,
+            all_parsed,
+            rows_fetched,
+            f"{sync_mode}_sheets_rest_tail",
+            cur,
+        )
     
     def _extract_sheet_id(self, url: str) -> str:
         """Extract sheet ID from Google Sheets URL."""
@@ -95,22 +247,104 @@ class GoogleSheetsScraper:
         except ValueError:
             logger.warning(f"Could not parse winners: {winners_str}")
             return 0
+
+    @staticmethod
+    def _draw_date_sort_key(result: Dict) -> str:
+        d = result.get("draw_date")
+        if not d:
+            return ""
+        s = str(d)
+        return s[:10] if len(s) >= 10 else s
+
+    @staticmethod
+    def _db_latest_draw_date(row: Optional[Dict]) -> Optional[date]:
+        if not row:
+            return None
+        raw = row.get("draw_date")
+        if not raw:
+            return None
+        s = str(raw).replace("Z", "+00:00")
+        try:
+            if "T" in s:
+                return datetime.fromisoformat(s.split("+")[0]).date()
+            return datetime.strptime(s[:10], "%Y-%m-%d").date()
+        except ValueError:
+            return None
+
+    def _append_only_candidate_rows(
+        self, game_type: str, sheet_results: List[Dict], sync_mode: str
+    ) -> Optional[List[Dict]]:
+        """
+        Reduce dedupe to recent draws + sheet tail (append-only). Returns None = use full sheet.
+        """
+        if not getattr(Config, "SHEETS_APPEND_ONLY_DEDUPE", True):
+            return None
+        if sync_mode in ("full", "full_bootstrap"):
+            return None
+        if "incremental" in sync_mode or "sheets_rest_tail" in sync_mode or "tail_probe" in sync_mode:
+            return None
+        if not sheet_results:
+            return None
+
+        latest_rows = instantdb.get_results(
+            game_type, limit=1, offset=0, order_by="draw_date.desc"
+        )
+        if not latest_rows:
+            return None
+
+        d_max = self._db_latest_draw_date(latest_rows[0])
+        if d_max is None:
+            return None
+
+        skew = int(getattr(Config, "SHEETS_APPEND_ONLY_DATE_SKEW_DAYS", 5))
+        start = (d_max - timedelta(days=skew)).isoformat()
+        tail_n = int(getattr(Config, "SHEETS_DEDUPE_TAIL_ROWS", 80))
+
+        by_date = [r for r in sheet_results if self._draw_date_sort_key(r) >= start]
+        tail = sheet_results[-tail_n:] if len(sheet_results) > tail_n else list(sheet_results)
+
+        merged: Dict[str, Dict] = {}
+        for r in by_date + tail:
+            merged[self._composite_key_parsed(r)] = r
+        out = list(merged.values())
+        logger.info(
+            "Append-only dedupe: %s candidate row(s) vs %s sheet rows (latest DB date %s)",
+            len(out),
+            len(sheet_results),
+            d_max.isoformat(),
+        )
+        return out
     
     def _read_sheet_public(self, sheet_id: str) -> pd.DataFrame:
-        """Read public Google Sheet using pandas."""
+        """Read public Google Sheet using pandas (short TTL cache per sheet_id to speed repeat syncs)."""
         try:
-            # Use pandas to read CSV directly from Google Sheets
-            sheet_name = "Sheet1"  # Default sheet name
+            ttl = float(getattr(Config, "SHEETS_CSV_CACHE_TTL_SEC", 120))
+            now = time.monotonic()
+            if ttl > 0 and sheet_id in self._csv_cache:
+                ts, cached = self._csv_cache[sheet_id]
+                if now - ts < ttl:
+                    logger.info(
+                        "Using in-memory CSV cache for sheet %s (%.0fs TTL, age %.1fs)",
+                        sheet_id,
+                        ttl,
+                        now - ts,
+                    )
+                    return cached.copy()
+
+            sheet_name = "Sheet1"
             url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
-            
+
             logger.info(f"Reading Google Sheet {sheet_id} using pandas...")
             df = pd.read_csv(url)
-            
+
             logger.info(f"Successfully read {len(df)} rows from sheet {sheet_id}")
             logger.info(f"Columns: {list(df.columns)}")
-            
+
+            if ttl > 0:
+                self._csv_cache[sheet_id] = (now, df)
+
             return df
-            
+
         except Exception as e:
             logger.error(f"Failed to read Google Sheet {sheet_id}: {e}")
             raise Exception(f"Could not read Google Sheet {sheet_id}. Make sure it's publicly accessible. Error: {e}")
@@ -128,8 +362,9 @@ class GoogleSheetsScraper:
             return results
         
         logger.info(f"Parsing {len(df)} rows from DataFrame")
-        logger.info(f"DataFrame columns: {list(df.columns)}")
-        logger.info(f"First few rows:\n{df.head(3)}")
+        logger.debug("DataFrame columns: %s", list(df.columns))
+        if len(df) <= 30:
+            logger.debug("First few rows:\n%s", df.head(3))
         
         # Get expected game name for filtering
         expected_game_name = self.games[game_type]['name']
@@ -322,6 +557,45 @@ class GoogleSheetsScraper:
             logger.warning(f"Could not fetch existing results: {e}")
             return {}
 
+    @staticmethod
+    def _composite_key_parsed(result: Dict) -> str:
+        dt = datetime.fromisoformat(str(result["draw_date"]).replace("Z", "+00:00"))
+        date_key = dt.date().isoformat()
+        dn = result.get("draw_number")
+        dn = "" if dn is None else str(dn)
+        return f"{date_key}|{dn}"
+
+    def _build_existing_lookup(
+        self, game_type: str, sheet_results: List[Dict]
+    ) -> Tuple[Dict[str, Dict], Optional[int]]:
+        """
+        Build composite_key -> row lookup for deduplication.
+        Uses a small filtered InstantDB query when there are few candidates; otherwise one full scan.
+        Returns (lookup, total_db_rows_used_for_dedupe or None if unknown).
+        """
+        n = len(sheet_results)
+        threshold = getattr(Config, "SHEETS_DEDUPE_FULL_TABLE_THRESHOLD", 500)
+        if n == 0:
+            return {}, 0
+        if n <= threshold:
+            candidates = [
+                {"draw_date": r["draw_date"], "draw_number": r.get("draw_number") or ""}
+                for r in sheet_results
+            ]
+            try:
+                keys = instantdb.fetch_existing_result_keys_for_candidates(game_type, candidates)
+                lookup = {k: {} for k in keys}
+                logger.info(
+                    "Dedupe: targeted query for %s sheet row(s) (threshold %s) — skipping full results table load",
+                    n,
+                    threshold,
+                )
+                return lookup, None
+            except Exception as e:
+                logger.warning("Targeted dedupe failed; falling back to full table scan: %s", e)
+        lookup = self._get_existing_results(game_type)
+        return lookup, len(lookup)
+
     def _incremental_eligible(self) -> bool:
         if not getattr(Config, "SHEETS_INCREMENTAL_ENABLED", True):
             return False
@@ -360,7 +634,7 @@ class GoogleSheetsScraper:
         if not new_results:
             return 0, errors
 
-        batch_size = 100
+        batch_size = 250
         total_batches = (len(new_results) + batch_size - 1) // batch_size
         current_dir = os.path.dirname(os.path.abspath(__file__))
         script_path = os.path.normpath(os.path.join(current_dir, "..", "scripts", "save_results.js"))
@@ -406,19 +680,35 @@ class GoogleSheetsScraper:
         return added_count, errors
 
     def _finalize_parse_and_write(
-        self, game_type: str, game_name: str, sheet_results: List[Dict], rows_fetched: int, sync_mode: str, cursor_after: Optional[int]
+        self,
+        game_type: str,
+        game_name: str,
+        sheet_results: List[Dict],
+        rows_fetched: int,
+        sync_mode: str,
+        cursor_after: Optional[int],
+        existing_results: Optional[Dict[str, Dict]] = None,
     ) -> Dict:
         sheet_results = list(sheet_results)
         sheet_results.sort(key=lambda x: x["draw_date"])
         if sheet_results:
             logger.info(f"  First date: {sheet_results[0]['draw_date']}  Last: {sheet_results[-1]['draw_date']}")
 
-        existing_results = self._get_existing_results(game_type)
+        dedupe_rows = self._append_only_candidate_rows(game_type, sheet_results, sync_mode)
+        if dedupe_rows is None:
+            dedupe_rows = sheet_results
+        narrow_keys = {self._composite_key_parsed(r) for r in dedupe_rows}
+
+        existing_total: Optional[int]
+        if existing_results is None:
+            existing_results, existing_total = self._build_existing_lookup(game_type, dedupe_rows)
+        else:
+            existing_total = len(existing_results)
         new_results = []
         for result in sheet_results:
-            draw_date = datetime.fromisoformat(result["draw_date"]).date().isoformat()
-            draw_number = result.get("draw_number", "")
-            composite_key = f"{draw_date}|{draw_number}"
+            composite_key = self._composite_key_parsed(result)
+            if composite_key not in narrow_keys:
+                continue
             if composite_key not in existing_results:
                 new_results.append(result)
 
@@ -429,7 +719,7 @@ class GoogleSheetsScraper:
             "game_type": game_type,
             "game_name": game_name,
             "total_in_sheet": len(sheet_results),
-            "existing_in_db": len(existing_results),
+            "existing_in_db": existing_total,
             "new_results": len(new_results),
             "added": added_count,
             "errors": errors,
@@ -442,6 +732,19 @@ class GoogleSheetsScraper:
     async def _scrape_game_full_csv(
         self, game_type: str, sheet_id: str, game_name: str, sync_mode: str, persist_cursor: bool
     ) -> Dict:
+        if not self._incremental_eligible():
+            logger.warning(
+                "Full Google Sheet CSV download (entire sheet). "
+                "Set GOOGLE_SERVICE_ACCOUNT_FILE + share the spreadsheet with the service account "
+                "to enable incremental row-range sync (much faster after the first run)."
+            )
+        elif persist_cursor and sync_mode != "full":
+            tail_stats = self._try_tail_scrape_via_sheets_rest(
+                game_type, sheet_id, game_name, sync_mode
+            )
+            if tail_stats is not None:
+                return tail_stats
+
         df = self._read_sheet(sheet_id)
         logger.info(f"Read {len(df)} rows from sheet (CSV export, mode={sync_mode})")
         sheet_results = self._parse_sheet_data(df, game_type)
@@ -484,10 +787,15 @@ class GoogleSheetsScraper:
 
             ws = self._get_gspread_worksheet(sheet_id)
             cursor = int(rec["next_row"])
-            window = max(10, int(Config.SHEETS_INCREMENTAL_WINDOW))
+            wcfg = int(Config.SHEETS_INCREMENTAL_WINDOW)
+            window = max(5, min(wcfg, 500))
             end_row = cursor + window - 1
             range_a1 = f"A{cursor}:Z{end_row}"
-            logger.info("Incremental gspread range %s", range_a1)
+            logger.info(
+                "Incremental sync: reading %s only (~%s sheet rows), not the full spreadsheet",
+                range_a1,
+                end_row - cursor + 1,
+            )
             values = ws.get(range_a1)
             if not values:
                 # Advance by window so we don't get stuck if the sheet has blank gaps below the cursor.
@@ -506,7 +814,7 @@ class GoogleSheetsScraper:
                     "game_type": game_type,
                     "game_name": game_name,
                     "total_in_sheet": 0,
-                    "existing_in_db": len(self._get_existing_results(game_type)),
+                    "existing_in_db": None,
                     "new_results": 0,
                     "added": 0,
                     "errors": [],
@@ -515,7 +823,9 @@ class GoogleSheetsScraper:
                     "cursor_after": next_row,
                 }
 
-            header = ws.row_values(1)
+            if sheet_id not in self._sheet_header_row:
+                self._sheet_header_row[sheet_id] = ws.row_values(1)
+            header = self._sheet_header_row[sheet_id]
             if not header:
                 raise ValueError("Could not read row 1 header from sheet")
             df = self._dataframe_from_matrix(header, values)
@@ -559,7 +869,9 @@ class GoogleSheetsScraper:
                 
                 # Update summary
                 stats['summary']['total_results_in_sheets'] += game_stats.get('total_in_sheet', 0)
-                stats['summary']['total_existing_in_db'] += game_stats.get('existing_in_db', 0)
+                ex = game_stats.get('existing_in_db')
+                if isinstance(ex, int):
+                    stats['summary']['total_existing_in_db'] += ex
                 stats['summary']['total_new_results'] += game_stats.get('new_results', 0)
                 stats['summary']['total_added'] += game_stats.get('added', 0)
                 

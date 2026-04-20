@@ -6,7 +6,7 @@ Reference: https://www.instantdb.com/docs/backend
 import logging
 import requests
 import json
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 from config import Config
 
@@ -170,44 +170,44 @@ class InstantDBClient:
             logger.error(f"Admin SDK bridge error: {e}")
             raise
     
-    def get_results(self, game_type: str, limit: int = 50, offset: int = 0, order_by: str = 'draw_date.desc') -> List[Dict]:
-        """Get lottery results from InstantDB using Node.js Admin SDK with proper sorting."""
+    def get_results_with_total(
+        self, game_type: str, limit: int = 50, offset: int = 0, order_by: str = 'draw_date.desc'
+    ) -> Tuple[List[Dict], Optional[int], bool]:
+        """
+        Paginated results via server-side InstaQL limit/offset when supported.
+        Returns (rows, total_or_none, has_more). Total may be unknown if InstantDB omits pageInfo.
+        """
         import subprocess
         import json
         import os
         import logging
         logger = logging.getLogger(__name__)
-        
-        entity_name = f"{game_type}_results"
-        
+
         try:
-            # Use Node.js Admin SDK for querying with proper sorting
             current_dir = os.path.dirname(os.path.abspath(__file__))
             script_path = os.path.join(current_dir, '..', 'scripts', 'query_results.js')
             script_path = os.path.normpath(script_path)
-            
+
             if not os.path.exists(script_path):
                 logger.warning(f"Node.js query script not found at {script_path}, using REST API fallback")
-                # Fallback to old method
-                return self._get_results_rest_api(game_type, limit, offset, order_by)
-            
-            # Prepare query data
+                rows = self._get_results_rest_api(game_type, limit, offset, order_by)
+                total = self._approximate_total_rest(game_type, rows, limit, offset, order_by)
+                has_more = offset + len(rows) < total
+                return rows, total, has_more
+
             query_data = {
                 'game_type': game_type,
                 'limit': limit,
                 'offset': offset,
-                'order_by': order_by
+                'order_by': order_by,
             }
-            
-            # Set environment variables - ensure they're not None
             env = os.environ.copy()
             from config import Config
             if Config.INSTANTDB_APP_ID:
                 env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
             if Config.INSTANTDB_ADMIN_TOKEN:
                 env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
-            
-            # Call Node.js script
+
             result = subprocess.run(
                 ['node', script_path],
                 input=json.dumps(query_data),
@@ -215,21 +215,59 @@ class InstantDBClient:
                 capture_output=True,
                 timeout=30,
                 env=env,
-                cwd=os.path.dirname(script_path) or os.getcwd()
+                cwd=os.path.dirname(script_path) or os.getcwd(),
             )
-            
+
             if result.returncode == 0:
-                response = json.loads(result.stdout)
-                return response.get('results', [])
-            else:
-                error_msg = result.stderr or result.stdout
-                logger.error(f"Node.js query failed: {error_msg}")
-                # Fallback to REST API
-                return self._get_results_rest_api(game_type, limit, offset, order_by)
-                
+                stdout_lines = [ln.strip() for ln in result.stdout.strip().splitlines() if ln.strip()]
+                response = None
+                for ln in reversed(stdout_lines):
+                    if ln.startswith('{'):
+                        try:
+                            response = json.loads(ln)
+                            break
+                        except json.JSONDecodeError:
+                            continue
+                if response is None:
+                    raise ValueError('No JSON object in query_results.js stdout')
+                rows = response.get('results', [])
+                raw_total = response.get('total')
+                total: Optional[int] = int(raw_total) if raw_total is not None else None
+                has_more = bool(response.get('has_more', False))
+                return rows, total, has_more
+
+            error_msg = result.stderr or result.stdout
+            logger.error(f"Node.js query failed: {error_msg}")
+            rows = self._get_results_rest_api(game_type, limit, offset, order_by)
+            total = self._approximate_total_rest(game_type, rows, limit, offset, order_by)
+            has_more = len(rows) >= limit and offset + len(rows) < total
+            return rows, total, has_more
+
         except Exception as e:
             logger.error(f"Query via Node.js failed: {e}, using REST API fallback")
-            return self._get_results_rest_api(game_type, limit, offset, order_by)
+            rows = self._get_results_rest_api(game_type, limit, offset, order_by)
+            total = self._approximate_total_rest(game_type, rows, limit, offset, order_by)
+            has_more = len(rows) >= limit and offset + len(rows) < total
+            return rows, total, has_more
+
+    def _approximate_total_rest(
+        self,
+        game_type: str,
+        page_rows: List[Dict],
+        limit: int,
+        offset: int,
+        order_by: str,
+    ) -> int:
+        """When REST returns only a page, derive total (may fetch up to 10k rows)."""
+        if len(page_rows) < limit:
+            return offset + len(page_rows)
+        all_rows = self._get_results_rest_api(game_type, 10000, 0, order_by)
+        return len(all_rows)
+
+    def get_results(self, game_type: str, limit: int = 50, offset: int = 0, order_by: str = 'draw_date.desc') -> List[Dict]:
+        """Get lottery results from InstantDB using Node.js Admin SDK with proper sorting."""
+        rows, _, _ = self.get_results_with_total(game_type, limit, offset, order_by)
+        return rows
     
     def _get_results_rest_api(self, game_type: str, limit: int = 50, offset: int = 0, order_by: str = 'draw_date.desc') -> List[Dict]:
         """Fallback method using REST API (may not support sorting properly)."""
@@ -568,7 +606,7 @@ class InstantDBClient:
             if result.returncode == 0:
                 try:
                     response = json.loads(result.stdout)
-                    logger.info(f"Accuracy record saved successfully: {response}")
+                    logger.debug("Accuracy record saved successfully: %s", response)
                     return response
                 except json.JSONDecodeError as e:
                     logger.warning(f"Admin SDK output is not JSON: {result.stdout}")
@@ -683,6 +721,51 @@ class InstantDBClient:
             })
         """
         return self._make_request('POST', 'query', {'query': query})
+
+    def fetch_existing_result_keys_for_candidates(
+        self, game_type: str, candidates: List[Dict]
+    ) -> List[str]:
+        """
+        Return composite keys (date|draw_number) already in InstantDB for the given candidate rows only.
+        Uses query_results_candidates.js (filtered InstaQL) — avoids loading the entire results table.
+        """
+        import json
+        import os
+        import subprocess
+
+        if not candidates:
+            return []
+
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        script_path = os.path.normpath(
+            os.path.join(current_dir, '..', 'scripts', 'query_results_candidates.js')
+        )
+        if not os.path.exists(script_path):
+            raise FileNotFoundError(f"query_results_candidates.js not found at {script_path}")
+
+        env = os.environ.copy()
+        if Config.INSTANTDB_APP_ID:
+            env['INSTANTDB_APP_ID'] = str(Config.INSTANTDB_APP_ID)
+        if Config.INSTANTDB_ADMIN_TOKEN:
+            env['INSTANTDB_ADMIN_TOKEN'] = str(Config.INSTANTDB_ADMIN_TOKEN)
+
+        payload = {'game_type': game_type, 'candidates': candidates}
+        result = subprocess.run(
+            ['node', script_path],
+            input=json.dumps(payload),
+            text=True,
+            capture_output=True,
+            timeout=60,
+            env=env,
+            cwd=os.path.dirname(script_path) or os.getcwd(),
+        )
+        if result.returncode != 0:
+            err = (result.stderr or result.stdout or '')[:800]
+            raise RuntimeError(f"query_results_candidates failed: {err}")
+
+        line = result.stdout.strip().splitlines()[-1]
+        data = json.loads(line)
+        return list(data.get('existing_keys') or [])
 
     def get_sheet_cursor(self, game_type: str) -> Optional[Dict]:
         """Load incremental Sheets cursor for game_type (InstantDB sheet_ingest_cursors)."""

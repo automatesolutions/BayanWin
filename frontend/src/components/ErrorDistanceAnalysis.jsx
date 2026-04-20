@@ -12,56 +12,80 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
   const [activeTab, setActiveTab] = useState('error'); // 'error' or 'gaussian'
 
   useEffect(() => {
-    if (gameType) {
-      fetchAccuracy();
-      fetchGaussianData();
-      
-      // Automatically calculate accuracy if no data exists
-      const autoCalculateTimer = setTimeout(async () => {
+    if (!gameType) {
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [accuracyRes] = await Promise.all([
+          getPredictionAccuracy(gameType, 50),
+          fetchGaussianData(),
+        ]);
+        if (cancelled) {
+          return;
+        }
+        const records = accuracyRes.data.accuracy_records || [];
+        setAccuracyData(records);
+
+        if (records.length > 0) {
+          setStatusMessage('');
+          setAutoCalculating(false);
+          return;
+        }
+
+        setAutoCalculating(true);
+        setStatusMessage('Matching predictions to results...');
         try {
-          const response = await getPredictionAccuracy(gameType, 50);
-          if (!response.data.accuracy_records || response.data.accuracy_records.length === 0) {
-            // No accuracy data, try to auto-calculate
-            setAutoCalculating(true);
-            setStatusMessage('Checking for predictions and results...');
-            
-            try {
-              setStatusMessage('Matching predictions to results...');
-              const calcResponse = await autoCalculateAccuracy(gameType);
-              
-              if (calcResponse.data.success && calcResponse.data.total_calculated > 0) {
-                setStatusMessage(`✅ Calculated ${calcResponse.data.total_calculated} accuracy records!`);
-                // Refresh after calculation
-                setTimeout(() => {
-                  fetchAccuracy();
-                  setAutoCalculating(false);
-                  setStatusMessage('');
-                }, 1500);
-              } else {
-                setStatusMessage(calcResponse.data.message || 'No matches found. Make sure you have predictions and results with matching dates.');
-                setAutoCalculating(false);
-                // Still refresh to check
-                setTimeout(() => fetchAccuracy(), 1000);
-              }
-            } catch (error) {
-              setStatusMessage(`⚠️ ${error.response?.data?.detail || error.message || 'Calculation failed'}`);
-              setAutoCalculating(false);
-              console.error('Auto-calculation failed:', error);
+          const calcResponse = await autoCalculateAccuracy(gameType);
+          if (cancelled) {
+            return;
+          }
+          if (calcResponse.data.success && calcResponse.data.total_calculated > 0) {
+            setStatusMessage(`✅ Calculated ${calcResponse.data.total_calculated} accuracy records!`);
+            const refresh = await getPredictionAccuracy(gameType, 50);
+            if (!cancelled) {
+              setAccuracyData(refresh.data.accuracy_records || []);
             }
+            setTimeout(() => {
+              if (!cancelled) {
+                setAutoCalculating(false);
+                setStatusMessage('');
+              }
+            }, 1500);
           } else {
-            // Data exists, clear any status
-            setStatusMessage('');
+            setStatusMessage(
+              calcResponse.data.message ||
+                'No matches found. Make sure you have predictions and results with matching dates.'
+            );
             setAutoCalculating(false);
           }
         } catch (error) {
+          if (!cancelled) {
+            setStatusMessage(`⚠️ ${error.response?.data?.detail || error.message || 'Calculation failed'}`);
+            setAutoCalculating(false);
+            console.error('Auto-calculation failed:', error);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) {
           setStatusMessage('Error checking accuracy data');
-          setAutoCalculating(false);
           console.error('Error checking accuracy data:', error);
         }
-      }, 1500); // Wait 1.5 seconds after component loads
-      
-      return () => clearTimeout(autoCalculateTimer);
-    }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    };
+
+    load();
+    return () => {
+      cancelled = true;
+    };
   }, [gameType]);
 
   const fetchAccuracy = async () => {

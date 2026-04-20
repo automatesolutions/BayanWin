@@ -451,8 +451,9 @@ class DRLAgent:
     
     def predict(self, game_type: str) -> List[int]:
         """Predict with Monte Carlo validation and Boltzmann selection."""
+        episodes = max(1, min(int(getattr(Config, 'DRL_PREDICT_EPISODES', 3)), 20))
         if not self.is_trained or self.trained_game_type != game_type:
-            self.train(game_type, episodes=3)
+            self.train(game_type, episodes=episodes)
         
         max_number = Config.GAMES[game_type]['max_number']
         n_buckets = self.params.get('markov_sum_buckets', 5)
@@ -471,7 +472,9 @@ class DRLAgent:
         
         if self.params.get('use_monte_carlo_validation', True):
             n_top = self.params.get('mc_top_candidates', 10)
-            n_samples = self.params.get('mc_validation_samples', 5000)
+            cfg_mc = int(getattr(Config, 'DRL_MC_VALIDATION_SAMPLES', 0) or 0)
+            n_samples = cfg_mc if cfg_mc > 0 else int(self.params.get('mc_validation_samples', 5000))
+            n_samples = max(500, min(n_samples, 50_000))
             top_actions = np.argsort(q_values[0])[-n_top:][::-1]
             
             if self.mc_histogram is None:

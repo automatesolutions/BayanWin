@@ -1,23 +1,30 @@
 """Frequency analysis utilities for lottery numbers - Using InstantDB."""
 from collections import Counter
 from datetime import datetime, timedelta
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from services.instantdb_client import instantdb
 from config import Config
 
-def calculate_frequency(game_type: str, days_back: int = None) -> Dict[int, int]:
+def calculate_frequency(
+    game_type: str,
+    days_back: int = None,
+    preloaded_results: Optional[List[Dict]] = None,
+) -> Dict[int, int]:
     """
     Calculate frequency of each number for a game.
     
     Args:
         game_type: Game type identifier
         days_back: Optional number of days to look back (None for all time)
+        preloaded_results: If set, use this list instead of fetching (avoids duplicate InstantDB reads).
         
     Returns:
         Dictionary mapping number to frequency count
     """
-    # Get all results from InstantDB
-    results = instantdb.get_results(game_type, limit=10000, offset=0)
+    if preloaded_results is not None:
+        results = preloaded_results
+    else:
+        results = instantdb.get_results(game_type, limit=10000, offset=0)
     
     if days_back:
         cutoff_date = (datetime.now() - timedelta(days=days_back)).date()
@@ -32,7 +39,12 @@ def calculate_frequency(game_type: str, days_back: int = None) -> Dict[int, int]
     
     return dict(Counter(all_numbers))
 
-def get_hot_numbers(game_type: str, top_n: int = 20, days_back: int = None) -> List[Tuple[int, int]]:
+def get_hot_numbers(
+    game_type: str,
+    top_n: int = 20,
+    days_back: int = None,
+    preloaded_results: Optional[List[Dict]] = None,
+) -> List[Tuple[int, int]]:
     """
     Get hot numbers (most frequently drawn).
     
@@ -44,11 +56,16 @@ def get_hot_numbers(game_type: str, top_n: int = 20, days_back: int = None) -> L
     Returns:
         List of tuples (number, frequency) sorted by frequency descending
     """
-    frequency = calculate_frequency(game_type, days_back)
+    frequency = calculate_frequency(game_type, days_back, preloaded_results)
     sorted_numbers = sorted(frequency.items(), key=lambda x: x[1], reverse=True)
     return sorted_numbers[:top_n]
 
-def get_cold_numbers(game_type: str, bottom_n: int = 20, days_back: int = None) -> List[Tuple[int, int]]:
+def get_cold_numbers(
+    game_type: str,
+    bottom_n: int = 20,
+    days_back: int = None,
+    preloaded_results: Optional[List[Dict]] = None,
+) -> List[Tuple[int, int]]:
     """
     Get cold numbers (least frequently drawn).
     
@@ -60,11 +77,14 @@ def get_cold_numbers(game_type: str, bottom_n: int = 20, days_back: int = None) 
     Returns:
         List of tuples (number, frequency) sorted by frequency ascending
     """
-    frequency = calculate_frequency(game_type, days_back)
+    frequency = calculate_frequency(game_type, days_back, preloaded_results)
     sorted_numbers = sorted(frequency.items(), key=lambda x: x[1])
     return sorted_numbers[:bottom_n]
 
-def get_overdue_numbers(game_type: str) -> List[Tuple[int, int]]:
+def get_overdue_numbers(
+    game_type: str,
+    preloaded_results: Optional[List[Dict]] = None,
+) -> List[Tuple[int, int]]:
     """
     Get overdue numbers (not drawn recently).
     
@@ -77,8 +97,10 @@ def get_overdue_numbers(game_type: str) -> List[Tuple[int, int]]:
     # Get max number range for the game
     max_number = Config.GAMES[game_type]['max_number']
     
-    # Get all results ordered by date descending
-    results = instantdb.get_results(game_type, limit=10000, offset=0, order_by='draw_date.desc')
+    if preloaded_results is not None:
+        results = preloaded_results
+    else:
+        results = instantdb.get_results(game_type, limit=10000, offset=0, order_by='draw_date.desc')
     
     if not results:
         return []

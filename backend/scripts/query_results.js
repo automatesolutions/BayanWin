@@ -1,34 +1,24 @@
-// Node.js script to query lottery results from InstantDB with proper sorting
+// Query lottery results — prefer server-side limit/offset/order (fast).
+// Falls back to loading the full entity only if the paginated query fails.
 const { init } = require('@instantdb/admin');
 
-// Get credentials from environment - ensure they're valid strings
 const appId = process.env.INSTANTDB_APP_ID;
 const adminToken = process.env.INSTANTDB_ADMIN_TOKEN;
 
-// Validate credentials
 if (!appId || appId === 'None' || appId === 'null' || appId.trim() === '') {
-  console.error(JSON.stringify({ 
-    error: 'INSTANTDB_APP_ID is required and must be a valid string',
-    received: appId 
-  }));
+  console.error(JSON.stringify({ error: 'INSTANTDB_APP_ID is required' }));
   process.exit(1);
 }
 
 if (!adminToken || adminToken === 'None' || adminToken === 'null' || adminToken.trim() === '') {
-  console.error(JSON.stringify({ 
-    error: 'INSTANTDB_ADMIN_TOKEN is required and must be a valid string',
-    received: adminToken ? '***' : null
-  }));
+  console.error(JSON.stringify({ error: 'INSTANTDB_ADMIN_TOKEN is required' }));
   process.exit(1);
 }
 
-// Initialize InstantDB Admin SDK
 const db = init({ appId: appId.trim(), adminToken: adminToken.trim() });
 
-// Read input from stdin
 let inputData = '';
 process.stdin.setEncoding('utf8');
-
 process.stdin.on('data', (chunk) => {
   inputData += chunk;
 });
@@ -37,63 +27,88 @@ process.stdin.on('end', async () => {
   try {
     const data = JSON.parse(inputData);
     const { game_type, limit, offset, order_by } = data;
-    
+
     if (!game_type) {
       console.error(JSON.stringify({ error: 'game_type is required' }));
       process.exit(1);
     }
-    
+
     const entityName = `${game_type}_results`;
-    
-    // Query the entity
-    const result = await db.query({
-      [entityName]: {}
-    });
-    
-    if (!result[entityName]) {
-      console.log(JSON.stringify({ results: [], total: 0 }));
-      return;
-    }
-    
-    let results = result[entityName];
-    
-    // Sort results by draw_date
-    // order_by format: "draw_date.desc" or "draw_date.asc"
-    if (order_by) {
-      const [field, direction] = order_by.split('.');
-      results.sort((a, b) => {
-        const aVal = a[field];
-        const bVal = b[field];
-        
-        // Handle date comparison
-        const aDate = new Date(aVal);
-        const bDate = new Date(bVal);
-        
-        if (direction === 'desc') {
-          return bDate - aDate;  // Newest first
-        } else {
-          return aDate - bDate;  // Oldest first
-        }
+    // High cap for server-side / dedupe reads; HTTP /api/results caps limit separately (e.g. le=100).
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 50, 1), 50000);
+    const off = Math.max(parseInt(offset, 10) || 0, 0);
+    const ob = order_by || 'draw_date.desc';
+    const parts = ob.split('.');
+    const orderField = parts[0] || 'draw_date';
+    const direction = parts[1] === 'asc' ? 'asc' : 'desc';
+
+    async function legacyFullTableQuery() {
+      const result = await db.query({ [entityName]: {} });
+      if (!result[entityName]) {
+        return { results: [], total: 0, has_more: false };
+      }
+      let rows = result[entityName];
+      rows.sort((a, b) => {
+        const aDate = new Date(a[orderField]);
+        const bDate = new Date(b[orderField]);
+        return direction === 'desc' ? bDate - aDate : aDate - bDate;
       });
+      const total = rows.length;
+      const pageRows = rows.slice(off, off + lim);
+      return {
+        results: pageRows,
+        total,
+        has_more: off + pageRows.length < total,
+      };
     }
-    
-    // Apply pagination
-    const total = results.length;
-    const start = offset || 0;
-    const end = start + (limit || 50);
-    const paginatedResults = results.slice(start, end);
-    
-    console.log(JSON.stringify({ 
-      results: paginatedResults, 
-      total: total 
-    }));
-    
+
+    try {
+      const result = await db.query({
+        [entityName]: {
+          $: {
+            limit: lim,
+            offset: off,
+            order: { [orderField]: direction },
+          },
+        },
+      });
+
+      const rows = result[entityName] || [];
+      let total = null;
+      if (result.pageInfo && result.pageInfo[entityName]) {
+        const pi = result.pageInfo[entityName];
+        if (typeof pi.rowCount === 'number') total = pi.rowCount;
+        else if (typeof pi.count === 'number') total = pi.count;
+        else if (typeof pi.totalCount === 'number') total = pi.totalCount;
+      }
+
+      let has_more;
+      if (total != null) {
+        has_more = off + rows.length < total;
+      } else {
+        has_more = rows.length === lim;
+      }
+
+      const out = { results: rows, has_more };
+      if (total != null) out.total = total;
+      console.log(JSON.stringify(out));
+    } catch (paginatedErr) {
+      console.error(
+        JSON.stringify({
+          warn: 'paginated_results_query_failed',
+          detail: paginatedErr.message,
+        })
+      );
+      const out = await legacyFullTableQuery();
+      console.log(JSON.stringify(out));
+    }
   } catch (error) {
-    console.error(JSON.stringify({ 
-      error: error.message,
-      stack: error.stack 
-    }));
+    console.error(
+      JSON.stringify({
+        error: error.message,
+        stack: error.stack,
+      })
+    );
     process.exit(1);
   }
 });
-

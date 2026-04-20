@@ -1,7 +1,7 @@
 """FastAPI application with API endpoints - Using InstantDB only."""
-from fastapi import FastAPI, HTTPException, Query, Path, Body, Request, Header
+from fastapi import FastAPI, HTTPException, Query, Path, Body, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime, date, timedelta
 from services.instantdb_client import instantdb
 from scrapers.google_sheets_scraper import GoogleSheetsScraper
@@ -14,6 +14,7 @@ from ml_models.nash_hot_filter import NashHotFilterModel
 from utils.frequency_analysis import get_hot_numbers, get_cold_numbers, get_overdue_numbers, calculate_frequency
 from utils.error_distance_calculator import calculate_all_metrics
 from utils.graph_aggregates import cooccurrence_edges, markov_ball_transitions, sankey_hot_model_votes
+from utils.ttl_cache import get_or_set
 from services.apify_ingest import ingest_apify_run, auto_ingest_from_apify_actor
 from services.prediction_council import run_council_report, load_latest_predictions_for_council
 from services.memory_service import (
@@ -22,13 +23,17 @@ from services.memory_service import (
     upsert_user_memory,
 )
 from config import Config
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List, Tuple
+from bisect import bisect_left
 from pydantic import BaseModel
 from openai import APIConnectionError, AuthenticationError, RateLimitError
 import concurrent.futures
+import asyncio
 import json
 import logging
 import numpy as np
+import queue
+import threading
 
 from services.miro_strategy import run_miro_strategy_predict
 
@@ -38,6 +43,33 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Short TTL JSON caches for heavy dashboard endpoints (per process; cleared on reload)
+_stats_api_cache: Dict[Any, Any] = {}
+_gaussian_api_cache: Dict[Any, Any] = {}
+
+
+def _prev_preds_lists_from_rows(all_rows: List[Dict[str, Any]], model_name: str) -> List[Any]:
+    """Up to 5 prior numeric rows for this model_type from a shared get_predictions page."""
+    prev_preds: List[Any] = []
+    for prev_pred in all_rows:
+        if prev_pred.get('model_type') != model_name:
+            continue
+        prev_preds.append(
+            [
+                prev_pred.get('predicted_number_1'),
+                prev_pred.get('predicted_number_2'),
+                prev_pred.get('predicted_number_3'),
+                prev_pred.get('predicted_number_4'),
+                prev_pred.get('predicted_number_5'),
+                prev_pred.get('predicted_number_6'),
+            ]
+        )
+        if len(prev_preds) >= 5:
+            break
+    while len(prev_preds) < 5:
+        prev_preds.append(None)
+    return prev_preds[:5]
 
 
 def _http_exception_from_llm_error(exc: Exception) -> HTTPException:
@@ -168,12 +200,9 @@ async def get_results(
     
     offset = (page - 1) * limit
     
-    # Use InstantDB client
-    results = instantdb.get_results(game_type, limit=limit, offset=offset, order_by='draw_date.desc')
-    
-    # Get total count (fetch all for now - InstantDB may have count endpoint)
-    all_results = instantdb.get_results(game_type, limit=10000, offset=0)
-    total = len(all_results)
+    results, total, has_more = instantdb.get_results_with_total(
+        game_type, limit=limit, offset=offset, order_by='draw_date.desc'
+    )
     
     results_data = []
     for result in results:
@@ -190,59 +219,75 @@ async def get_results(
             'created_at': result.get('created_at')
         })
     
-    return {
+    out: Dict[str, Any] = {
         'results': results_data,
-        'total': total,
         'page': page,
-        'limit': limit
+        'limit': limit,
+        'has_more': has_more,
     }
+    if total is not None:
+        out['total'] = total
+    return out
 
-async def auto_calculate_accuracy_for_new_results(game_type: str = None):
+async def auto_calculate_accuracy_for_new_results(
+    game_type: str = None,
+    *,
+    results_limit: Optional[int] = None,
+    predictions_limit: Optional[int] = None,
+):
     """
     Automatically match predictions to results and calculate accuracy.
     This runs after scraping to populate the Error Distance Analysis dashboard.
+    Use results_limit / predictions_limit to cap work (e.g. post-scrape: recent rows only).
     """
     games_to_process = [game_type] if game_type else Config.GAMES.keys()
-    
+    rl = results_limit if results_limit is not None else Config.ACCURACY_AUTO_RESULTS_LIMIT
+    pl = predictions_limit if predictions_limit is not None else Config.ACCURACY_AUTO_PREDICTIONS_LIMIT
+
     total_calculated = 0
-    
+
     for game in games_to_process:
         try:
-            # Get all results sorted by date DESCENDING (newest first) to match recent predictions
-            all_results = instantdb.get_results(game, limit=1000, offset=0, order_by='draw_date.desc')
+            # Newest-first; limit avoids scanning the full history after each small sheet update
+            all_results = instantdb.get_results(game, limit=rl, offset=0, order_by='draw_date.desc')
             valid_results = []
-            
+
             for r in all_results:
                 draw_date = r.get('draw_date')
                 if not draw_date:
                     continue
-                
+
                 # Validate that result has all required numbers
                 if not all(r.get(f'number_{i}') for i in range(1, 7)):
                     continue
-                
+
                 valid_results.append(r)
-            
+
             if not valid_results:
                 logger.info(f"No valid results found for {game}")
                 continue
-            
-            logger.info(f"Found {len(valid_results)} valid results for {game}")
-            
-            # Get predictions
-            predictions = instantdb.get_predictions(game, limit=1000)
-            logger.info(f"Found {len(predictions)} predictions for {game}")
-            
-            # Get existing accuracy records to avoid duplicates
+
+            logger.info(f"Found {len(valid_results)} valid results for {game} (limit={rl})")
+
+            predictions = instantdb.get_predictions(game, limit=pl)
+            logger.info(f"Found {len(predictions)} predictions for {game} (limit={pl})")
+
+            candidate_result_ids = {str(r.get('id')) for r in valid_results if r.get('id')}
             existing_accuracy = instantdb.get_prediction_accuracy(game)
             existing_pairs = set()
             for acc in existing_accuracy:
                 pred_id = acc.get('prediction_id')
                 res_id = acc.get('result_id')
                 if pred_id and res_id:
-                    existing_pairs.add((str(pred_id), str(res_id)))
-            
-            logger.info(f"Found {len(existing_pairs)} existing accuracy records for {game}")
+                    sid = str(res_id)
+                    if sid in candidate_result_ids:
+                        existing_pairs.add((str(pred_id), sid))
+
+            logger.info(
+                "Considering %s existing accuracy pair(s) for this result window (of %s loaded)",
+                len(existing_pairs),
+                len(existing_accuracy),
+            )
             calculated_count = 0
             
             # Helper function to parse date strings
@@ -261,43 +306,55 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
                 for r in valid_results
             ]
             results_with_date = [(r, d) for (r, d) in results_with_date if d is not None]
+
+            # Predictions sorted by prediction date — use bisect instead of scanning all preds per result
+            pred_dated: List[Tuple[date, Any]] = []
+            for p in predictions:
+                td = p.get('target_draw_date')
+                if not td:
+                    ca = p.get('created_at')
+                    if ca:
+                        td = ca.split('T')[0] if 'T' in ca else ca[:10]
+                        logger.debug(
+                            "Using created_at as fallback for prediction %s: %s",
+                            p.get('id'),
+                            td,
+                        )
+                    else:
+                        continue
+                pred_date_obj = parse_date_str(td)
+                if pred_date_obj:
+                    pred_dated.append((pred_date_obj, p))
+            pred_dated.sort(key=lambda x: x[0])
+            pred_dates_sorted = [x[0] for x in pred_dated]
             
             # Find matching predictions for each result
             for idx, (r, result_date_obj) in enumerate(results_with_date):
                 result_id = str(r.get('id'))
                 matching_predictions = []
                 
-                # Log the first few results being processed
                 if idx < 3:
-                    logger.info(f"Processing result #{idx+1}: draw_date={result_date_obj}, result_id={result_id}")
-                
-                for p in predictions:
-                    # Prefer target_draw_date; fallback to created_at for old predictions
-                    td = p.get('target_draw_date')
-                    if not td:
-                        ca = p.get('created_at')
-                        if ca:
-                            td = ca.split('T')[0] if 'T' in ca else ca[:10]
-                            logger.info(f"Using created_at as fallback for prediction {p.get('id')}: {td}")
-                        else:
-                            logger.debug(f"Skipping prediction {p.get('id')} - no date found")
-                            continue
-                    
-                    pred_date_obj = parse_date_str(td)
-                    if not pred_date_obj:
-                        logger.debug(f"Skipping prediction {p.get('id')} - couldn't parse date: {td}")
-                        continue
-                    
-                    # Log first result's first few comparisons
-                    if idx < 1 and len(matching_predictions) < 3:
-                        logger.info(f"  Comparing pred {p.get('id')[:8]}... ({pred_date_obj}) vs result ({result_date_obj})")
-                    
-                    # Match predictions made BEFORE the draw date (1-7 days before)
-                    # We ONLY match future results, not exact date matches
-                    if pred_date_obj < result_date_obj and (result_date_obj - pred_date_obj) <= timedelta(days=7):
-                        matching_predictions.append(p)
-                        days_before = (result_date_obj - pred_date_obj).days
-                        logger.info(f"✓ Match: prediction from {pred_date_obj} ({days_before} days before) → result from {result_date_obj}")
+                    logger.debug(
+                        "Processing result #%s: draw_date=%s, result_id=%s",
+                        idx + 1,
+                        result_date_obj,
+                        result_id,
+                    )
+
+                # pred_date < result_date and within 7 calendar days => pred_date in [result-7d, result-1d]
+                window_start = result_date_obj - timedelta(days=7)
+                i_lo = bisect_left(pred_dates_sorted, window_start)
+                i_hi = bisect_left(pred_dates_sorted, result_date_obj)
+                for j in range(i_lo, i_hi):
+                    pred_date_obj, p = pred_dated[j]
+                    matching_predictions.append(p)
+                    logger.debug(
+                        "Match: prediction %s (%s) → result %s (%s)",
+                        p.get('id'),
+                        pred_date_obj,
+                        result_id,
+                        result_date_obj,
+                    )
                 
                 for prediction in matching_predictions:
                     pred_id = str(prediction.get('id'))
@@ -344,7 +401,12 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
                         calculated_count += 1
                         total_calculated += 1
                         
-                        logger.info(f"Auto-calculated accuracy for {game} prediction {pred_id} vs result {result_id}")
+                        logger.debug(
+                            "Auto-calculated accuracy for %s prediction %s vs result %s",
+                            game,
+                            pred_id,
+                            result_id,
+                        )
                     except Exception as e:
                         logger.warning(f"Failed to auto-calculate accuracy for {game} prediction {pred_id} vs result {result_id}: {e}")
                         import traceback
@@ -363,6 +425,37 @@ async def auto_calculate_accuracy_for_new_results(game_type: str = None):
     
     logger.info(f"Auto-calculation completed. Total calculated: {total_calculated}")
     return total_calculated
+
+
+async def _post_scrape_accuracy_and_drl(game_type: Optional[str]) -> None:
+    """Run after scrape response is sent so the client is not blocked on accuracy + DRL."""
+    try:
+        accuracy_count = await auto_calculate_accuracy_for_new_results(
+            game_type,
+            results_limit=Config.ACCURACY_POST_SCRAPE_RESULTS_LIMIT,
+            predictions_limit=Config.ACCURACY_POST_SCRAPE_PREDICTIONS_LIMIT,
+        )
+        if accuracy_count > 0:
+            logger.info(
+                "Post-scrape: auto-calculated %s accuracy records",
+                accuracy_count,
+            )
+            if game_type:
+                try:
+                    # learn_from_accuracy_records loads predictions/results internally; pass full accuracy list
+                    drl_agent.learn_from_accuracy_records(
+                        game_type,
+                        instantdb.get_prediction_accuracy(game_type),
+                        instantdb,
+                    )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to update DRL after post-scrape auto-calculate (non-critical): %s",
+                        e,
+                    )
+    except Exception as e:
+        logger.warning("Post-scrape auto-calculate accuracy failed (non-critical): %s", e)
+
 
 @app.get("/api/accuracy/diagnostics/{game_type}")
 async def get_accuracy_diagnostics(game_type: str = Path(...)):
@@ -516,6 +609,7 @@ async def trigger_auto_calculate_accuracy(
 @app.post("/api/scrape")
 async def scrape_data(
     request: ScrapeRequest,
+    background_tasks: BackgroundTasks,
     full_sync: Optional[bool] = Query(None, description="If true, full CSV reconcile and reset sheet ingest cursor (overrides body when true)"),
 ):
     """Trigger data scraping from Google Sheets. Can scrape all games or a specific game."""
@@ -534,12 +628,13 @@ async def scrape_data(
                 game_stats = await scraper.scrape_game(request.game_type, full_sync=use_full_sync)
                 
                 # Format response for single game
+                _ex = game_stats.get('existing_in_db')
                 stats = {
                     'total_games': 1,
                     'games': {request.game_type: game_stats},
                     'summary': {
                         'total_results_in_sheets': game_stats.get('total_in_sheet', 0),
-                        'total_existing_in_db': game_stats.get('existing_in_db', 0),
+                        'total_existing_in_db': _ex if isinstance(_ex, int) else None,
                         'total_new_results': game_stats.get('new_results', 0),
                         'total_added': game_stats.get('added', 0)
                     }
@@ -583,15 +678,23 @@ async def scrape_data(
             )
         
         # Format stats for frontend compatibility
+        games_payload = stats.get('games', {}) or {}
+        sync_modes = {
+            gt: (gs or {}).get('sync_mode')
+            for gt, gs in games_payload.items()
+            if isinstance(gs, dict) and gs.get('sync_mode')
+        }
+        _tie = stats.get('summary', {}).get('total_existing_in_db')
         frontend_stats = {
             'total_new': total_added,
-            'total_duplicates': stats.get('summary', {}).get('total_existing_in_db', 0),
+            'total_duplicates': _tie if isinstance(_tie, int) else 0,
             'games_updated': [
-                game_type for game_type, game_stats in stats.get('games', {}).items()
+                game_type for game_type, game_stats in games_payload.items()
                 if game_stats.get('added', 0) > 0
             ],
             'summary': stats.get('summary', {}),
-            'games': stats.get('games', {}),
+            'games': games_payload,
+            'sync_modes': sync_modes,
         }
         
         # Optional: run Apify Actor after Sheets (same game_type); merges into InstantDB
@@ -636,29 +739,9 @@ async def scrape_data(
         else:
             logger.info(f"✅ Sheets + Apify: {combined_added} new results to InstantDB (sheets={total_added}, apify={apify_added})")
         
-        # Auto-calculate accuracy for new results (non-blocking)
         if combined_added > 0:
-            try:
-                accuracy_count = await auto_calculate_accuracy_for_new_results(request.game_type)
-                if accuracy_count > 0:
-                    logger.info(f"Auto-calculated {accuracy_count} accuracy records")
-                    
-                    # Trigger DRL learning from newly calculated accuracy records
-                    try:
-                        if request.game_type:
-                            accuracy_records = instantdb.get_prediction_accuracy(request.game_type)
-                            predictions_all = instantdb.get_predictions(request.game_type, limit=1000)
-                            drl_prediction_ids = {p.get('id') for p in predictions_all if p.get('model_type') == 'DRL'}
-                            drl_accuracy = [acc for acc in accuracy_records if acc.get('prediction_id') in drl_prediction_ids]
-                            
-                            if len(drl_accuracy) >= 5:
-                                drl_agent.learn_from_accuracy_records(request.game_type, drl_accuracy, instantdb)
-                                logger.info(f"DRL agent updated after auto-calculating accuracy for {request.game_type}")
-                    except Exception as e:
-                        logger.warning(f"Failed to update DRL after auto-calculate (non-critical): {e}")
-            except Exception as e:
-                logger.warning(f"Auto-calculate accuracy failed (non-critical): {e}")
-        
+            background_tasks.add_task(_post_scrape_accuracy_and_drl, request.game_type)
+
         return response
     except HTTPException:
         raise
@@ -690,7 +773,11 @@ async def ingest_apify_dataset(request: ApifyIngestRequest):
 
     if result.get("total_added", 0) > 0:
         try:
-            await auto_calculate_accuracy_for_new_results(request.game_type)
+            await auto_calculate_accuracy_for_new_results(
+                request.game_type,
+                results_limit=Config.ACCURACY_POST_SCRAPE_RESULTS_LIMIT,
+                predictions_limit=Config.ACCURACY_POST_SCRAPE_PREDICTIONS_LIMIT,
+            )
         except Exception as e:
             logger.warning("Auto-calculate after Apify ingest (non-critical): %s", e)
 
@@ -730,247 +817,338 @@ async def apify_webhook(
 
     if result.get("total_added", 0) > 0:
         try:
-            await auto_calculate_accuracy_for_new_results(game_type)
+            await auto_calculate_accuracy_for_new_results(
+                game_type,
+                results_limit=Config.ACCURACY_POST_SCRAPE_RESULTS_LIMIT,
+                predictions_limit=Config.ACCURACY_POST_SCRAPE_PREDICTIONS_LIMIT,
+            )
         except Exception as e:
             logger.warning("Auto-calculate after Apify webhook (non-critical): %s", e)
 
     return {"success": True, **result}
 
 
+def _emit_predict_stream(stream_queue: Optional[queue.Queue], obj: Dict[str, Any]) -> None:
+    if stream_queue is not None:
+        stream_queue.put(json.dumps(obj, default=str) + "\n")
+
+
+def _prediction_pipeline(
+    game_type: str,
+    include_council: bool,
+    stream_queue: Optional[queue.Queue] = None,
+) -> Optional[Dict[str, Any]]:
+    """Run six core models + Miro, optionally pushing NDJSON events to stream_queue."""
+    import time
+
+    target_draw_date = date.today().isoformat()
+    game_name = Config.GAMES[game_type]['name']
+
+    print("=" * 80)
+    print(f"STARTING PREDICTION GENERATION FOR {game_name}")
+    print(f"   Game Type: {game_type}")
+    print(f"   Target Date: {target_draw_date}")
+    print("=" * 80)
+    logger.info("=" * 80)
+    logger.info(f"🎯 STARTING PREDICTION GENERATION FOR {game_name}")
+    logger.info(f"   Game Type: {game_type}")
+    logger.info(f"   Target Date: {target_draw_date}")
+    logger.info("=" * 80)
+
+    _emit_predict_stream(
+        stream_queue,
+        {
+            "event": "start",
+            "game_type": game_type,
+            "game_name": game_name,
+            "target_draw_date": target_draw_date,
+        },
+    )
+
+    predictions: Dict[str, Any] = {}
+    model_types = {
+        'XGBoost': xgboost_model,
+        'DecisionTree': decision_tree_model,
+        'MarkovChain': markov_chain_model,
+        'AnomalyDetection': anomaly_detection_model,
+        'NashHotFilter': nash_hot_filter_model,
+        'DRL': drl_agent,
+    }
+
+    all_prev_rows = instantdb.get_predictions(game_type, limit=120)
+
+    def _run_model(name: str, inst: Any) -> Tuple[str, List[int], float]:
+        start_time = time.time()
+        timeout_seconds = 120 if name == 'DRL' else 60
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(inst.predict, game_type)
+            try:
+                predicted_numbers = future.result(timeout=timeout_seconds)
+            except concurrent.futures.TimeoutError:
+                raise TimeoutError(f"{name} took longer than {timeout_seconds} seconds")
+        elapsed = time.time() - start_time
+        return name, predicted_numbers, elapsed
+
+    total_models = len(model_types)
+    parallel = bool(getattr(Config, 'PREDICT_PARALLEL', True))
+    max_workers = min(len(model_types), int(getattr(Config, 'PREDICT_MAX_WORKERS', 6)))
+
+    def _persist_core(model_name: str, predicted_numbers: List[int], elapsed: float, idx_log: int) -> None:
+        print(f"\n[{idx_log}/{total_models}] Training/Predicting with {model_name}...")
+        print(f"   ✅ {model_name} completed in {elapsed:.2f}s")
+        print(f"   📊 Predicted numbers: {predicted_numbers}")
+        logger.info(f"\n[{idx_log}/{total_models}] 🤖 Training/Predicting with {model_name}...")
+        logger.info(f"   ✅ {model_name} completed in {elapsed:.2f}s")
+        logger.info(f"   📊 Predicted numbers: {predicted_numbers}")
+
+        prev_preds = _prev_preds_lists_from_rows(all_prev_rows, model_name)
+        print(f"   💾 Creating NEW {model_name} prediction in database...")
+        logger.info(f"   💾 Creating NEW {model_name} prediction in database (target_date: {target_draw_date})...")
+        prediction_data = {
+            'target_draw_date': target_draw_date,
+            'model_type': model_name,
+            'predicted_number_1': predicted_numbers[0],
+            'predicted_number_2': predicted_numbers[1],
+            'predicted_number_3': predicted_numbers[2],
+            'predicted_number_4': predicted_numbers[3],
+            'predicted_number_5': predicted_numbers[4],
+            'predicted_number_6': predicted_numbers[5],
+            'previous_prediction_1': prev_preds[0] if len(prev_preds) > 0 else None,
+            'previous_prediction_2': prev_preds[1] if len(prev_preds) > 1 else None,
+            'previous_prediction_3': prev_preds[2] if len(prev_preds) > 2 else None,
+            'previous_prediction_4': prev_preds[3] if len(prev_preds) > 3 else None,
+            'previous_prediction_5': prev_preds[4] if len(prev_preds) > 4 else None,
+            'created_at': datetime.now().isoformat(),
+        }
+        new_prediction = instantdb.create_prediction(game_type, prediction_data)
+        prediction_id = new_prediction.get('id', 'unknown')
+        print(f"   ✅ Created NEW prediction record with ID: {prediction_id}")
+        logger.info(f"   ✅ Created NEW prediction record with ID: {prediction_id} (old predictions preserved)")
+        predictions[model_name] = {
+            'numbers': predicted_numbers,
+            'previous_predictions': prev_preds[:5],
+            'prediction_id': new_prediction.get('id'),
+        }
+        _emit_predict_stream(
+            stream_queue,
+            {
+                "event": "model",
+                "model": model_name,
+                "elapsed_sec": round(elapsed, 3),
+                "predictions": {model_name: predictions[model_name]},
+            },
+        )
+
+    def _fail_core(model_name: str, err: str, idx_log: int) -> None:
+        print(f"\n[{idx_log}/{total_models}] Training/Predicting with {model_name}...")
+        print(f"   ❌ {model_name} FAILED: {err}")
+        logger.error(f"\n[{idx_log}/{total_models}] 🤖 {model_name} FAILED: {err}")
+        predictions[model_name] = {'error': err}
+        _emit_predict_stream(
+            stream_queue,
+            {"event": "model", "model": model_name, "predictions": {model_name: {'error': err}}},
+        )
+
+    completion_counter = [0]
+
+    def _next_idx() -> int:
+        completion_counter[0] += 1
+        return completion_counter[0]
+
+    if parallel and max_workers > 1:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_name = {
+                executor.submit(_run_model, model_name, model_instance): model_name
+                for model_name, model_instance in model_types.items()
+            }
+            for future in concurrent.futures.as_completed(future_to_name):
+                model_name = future_to_name[future]
+                idx_log = _next_idx()
+                try:
+                    name, nums, elapsed = future.result()
+                except Exception as e:
+                    _fail_core(model_name, str(e), idx_log)
+                    continue
+                _persist_core(name, nums, elapsed, idx_log)
+    else:
+        for model_name, model_instance in model_types.items():
+            idx_log = _next_idx()
+            try:
+                name, nums, elapsed = _run_model(model_name, model_instance)
+            except Exception as e:
+                _fail_core(model_name, str(e), idx_log)
+                continue
+            _persist_core(name, nums, elapsed, idx_log)
+
+    if getattr(Config, "MIRO_STRATEGY_ENABLED", True):
+        miro_label = "Miro"
+        if Config.LLM_API_KEY:
+            logger.info("Running Miro strategy (LLM multi-agent)…")
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    fut = pool.submit(run_miro_strategy_predict, game_type, predictions)
+                    miro_numbers = fut.result(timeout=180)
+                prev_preds = _prev_preds_lists_from_rows(all_prev_rows, miro_label)
+                prediction_data = {
+                    "target_draw_date": target_draw_date,
+                    "model_type": miro_label,
+                    "predicted_number_1": miro_numbers[0],
+                    "predicted_number_2": miro_numbers[1],
+                    "predicted_number_3": miro_numbers[2],
+                    "predicted_number_4": miro_numbers[3],
+                    "predicted_number_5": miro_numbers[4],
+                    "predicted_number_6": miro_numbers[5],
+                    "previous_prediction_1": prev_preds[0] if len(prev_preds) > 0 else None,
+                    "previous_prediction_2": prev_preds[1] if len(prev_preds) > 1 else None,
+                    "previous_prediction_3": prev_preds[2] if len(prev_preds) > 2 else None,
+                    "previous_prediction_4": prev_preds[3] if len(prev_preds) > 3 else None,
+                    "previous_prediction_5": prev_preds[4] if len(prev_preds) > 4 else None,
+                    "created_at": datetime.now().isoformat(),
+                }
+                new_prediction = instantdb.create_prediction(game_type, prediction_data)
+                predictions[miro_label] = {
+                    "numbers": miro_numbers,
+                    "previous_predictions": prev_preds[:5],
+                    "prediction_id": new_prediction.get("id"),
+                }
+                logger.info("Miro prediction stored: %s", miro_numbers)
+                _emit_predict_stream(
+                    stream_queue,
+                    {"event": "model", "model": miro_label, "predictions": {miro_label: predictions[miro_label]}},
+                )
+            except concurrent.futures.TimeoutError:
+                logger.error("Miro strategy timed out after 180s")
+                predictions[miro_label] = {"error": "Miro strategy timed out (180s)"}
+                _emit_predict_stream(
+                    stream_queue,
+                    {"event": "model", "model": miro_label, "predictions": {miro_label: predictions[miro_label]}},
+                )
+            except Exception as e:
+                logger.exception("Miro strategy failed")
+                predictions[miro_label] = {"error": str(e)}
+                _emit_predict_stream(
+                    stream_queue,
+                    {"event": "model", "model": miro_label, "predictions": {miro_label: predictions[miro_label]}},
+                )
+        else:
+            predictions[miro_label] = {
+                "error": "LLM_API_KEY is not configured (required for Miro strategy)",
+            }
+            _emit_predict_stream(
+                stream_queue,
+                {"event": "model", "model": miro_label, "predictions": {miro_label: predictions[miro_label]}},
+            )
+    else:
+        predictions["Miro"] = {
+            "error": "Miro strategy is disabled (MIRO_STRATEGY_ENABLED=false)",
+        }
+        _emit_predict_stream(
+            stream_queue,
+            {"event": "model", "model": "Miro", "predictions": {"Miro": predictions["Miro"]}},
+        )
+
+    n_cards = len(predictions)
+    print("\n" + "=" * 80)
+    print(f"PREDICTION GENERATION COMPLETE!")
+    print(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{n_cards}")
+    print(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{n_cards}")
+    print("=" * 80)
+    logger.info("\n" + "=" * 80)
+    logger.info(f"🎉 PREDICTION GENERATION COMPLETE!")
+    logger.info(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{n_cards}")
+    logger.info(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{n_cards}")
+    logger.info("=" * 80)
+
+    try:
+        def run_auto_calculate():
+            import asyncio as aio
+            try:
+                aio.run(auto_calculate_accuracy_for_new_results(game_type))
+            except Exception as e:
+                logger.warning(f"Background auto-calculation failed: {e}")
+
+        thread = threading.Thread(target=run_auto_calculate)
+        thread.daemon = True
+        thread.start()
+        logger.info(f"✅ Triggered background auto-calculation of accuracy for {game_type}")
+    except Exception as e:
+        logger.warning(f"Failed to trigger auto-calculation after prediction generation: {e}")
+
+    council_report = None
+    if include_council and Config.LLM_API_KEY and getattr(Config, "LLM_COUNCIL_ENABLED", True):
+        try:
+            council_report = run_council_report(game_type, predictions, "")
+        except AuthenticationError as e:
+            logger.warning("Council report auth failed (non-critical): %s", e)
+            council_report = {"error": "LLM API key rejected; check LLM_API_KEY in .env"}
+        except Exception as e:
+            logger.warning("Council report failed (non-critical): %s", e)
+            council_report = {"error": str(e)}
+
+    ts = datetime.now().isoformat()
+    if stream_queue is not None:
+        _emit_predict_stream(
+            stream_queue,
+            {
+                "event": "done",
+                "success": True,
+                "game_type": game_type,
+                "target_draw_date": target_draw_date,
+                "predictions": predictions,
+                "timestamp": ts,
+                "council_report": council_report,
+            },
+        )
+        return None
+
+    response_payload: Dict[str, Any] = {
+        'success': True,
+        'game_type': game_type,
+        'target_draw_date': target_draw_date,
+        'predictions': predictions,
+        'timestamp': ts,
+    }
+    if council_report is not None:
+        response_payload['council_report'] = council_report
+    return response_payload
+
+
 @app.post("/api/predict/{game_type}")
 async def generate_predictions(
     game_type: str = Path(..., description="Game type identifier"),
     include_council: bool = Query(False, description="Run LLM council after models (requires LLM_API_KEY)"),
+    stream: bool = Query(False, description="Stream NDJSON (application/x-ndjson) as each model finishes"),
 ):
-    """Get predictions from all 5 models."""
+    """Get predictions from six core ML models, then optional Miro (LLM)."""
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
-    
+
+    if stream:
+        q: queue.Queue = queue.Queue()
+
+        def worker():
+            try:
+                _prediction_pipeline(game_type, include_council, stream_queue=q)
+            except Exception as e:
+                logger.exception("Streaming prediction pipeline failed")
+                q.put(json.dumps({"event": "error", "detail": str(e)}) + "\n")
+            finally:
+                q.put(None)
+
+        threading.Thread(target=worker, daemon=True).start()
+
+        async def ndjson_iter():
+            while True:
+                line = await asyncio.to_thread(q.get)
+                if line is None:
+                    break
+                yield line
+
+        return StreamingResponse(ndjson_iter(), media_type="application/x-ndjson")
+
     try:
-        target_draw_date = date.today().isoformat()
-        game_name = Config.GAMES[game_type]['name']
-        
-        # START LOGGING
-        print("=" * 80)
-        print(f"STARTING PREDICTION GENERATION FOR {game_name}")
-        print(f"   Game Type: {game_type}")
-        print(f"   Target Date: {target_draw_date}")
-        print("=" * 80)
-        logger.info("=" * 80)
-        logger.info(f"🎯 STARTING PREDICTION GENERATION FOR {game_name}")
-        logger.info(f"   Game Type: {game_type}")
-        logger.info(f"   Target Date: {target_draw_date}")
-        logger.info("=" * 80)
-        
-        predictions = {}
-        model_types = {
-            'XGBoost': xgboost_model,
-            'DecisionTree': decision_tree_model,
-            'MarkovChain': markov_chain_model,
-            'AnomalyDetection': anomaly_detection_model,
-            'NashHotFilter': nash_hot_filter_model,
-            'DRL': drl_agent
-        }
-        
-        total_models = len(model_types)
-        current_model = 0
-        
-        for model_name, model_instance in model_types.items():
-            current_model += 1
-            try:
-                # MODEL START
-                print(f"\n[{current_model}/{total_models}] Training/Predicting with {model_name}...")
-                logger.info(f"\n[{current_model}/{total_models}] 🤖 Training/Predicting with {model_name}...")
-                import time
-                start_time = time.time()
-                
-                # Generate prediction with timeout (longer timeout for DRL)
-                timeout_seconds = 120 if model_name == 'DRL' else 60  # DRL needs more time
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(model_instance.predict, game_type)
-                    try:
-                        predicted_numbers = future.result(timeout=timeout_seconds)
-                    except concurrent.futures.TimeoutError:
-                        raise TimeoutError(f"{model_name} took longer than {timeout_seconds} seconds")
-                
-                elapsed = time.time() - start_time
-                print(f"   ✅ {model_name} completed in {elapsed:.2f}s")
-                print(f"   📊 Predicted numbers: {predicted_numbers}")
-                logger.info(f"   ✅ {model_name} completed in {elapsed:.2f}s")
-                logger.info(f"   📊 Predicted numbers: {predicted_numbers}")
-                
-                # Get previous 5 predictions for this model
-                previous_predictions = instantdb.get_predictions(game_type, limit=5)
-                prev_preds = []
-                
-                for prev_pred in previous_predictions:
-                    if prev_pred.get('model_type') == model_name:
-                        prev_preds.append([
-                            prev_pred.get('predicted_number_1'), prev_pred.get('predicted_number_2'),
-                            prev_pred.get('predicted_number_3'), prev_pred.get('predicted_number_4'),
-                            prev_pred.get('predicted_number_5'), prev_pred.get('predicted_number_6')
-                        ])
-                
-                # Pad to 5 if needed
-                while len(prev_preds) < 5:
-                    prev_preds.append(None)
-                
-                # Store prediction in InstantDB (creates NEW record, does NOT replace old ones)
-                print(f"   💾 Creating NEW {model_name} prediction in database...")
-                logger.info(f"   💾 Creating NEW {model_name} prediction in database (target_date: {target_draw_date})...")
-                prediction_data = {
-                    'target_draw_date': target_draw_date,
-                    'model_type': model_name,
-                    'predicted_number_1': predicted_numbers[0],
-                    'predicted_number_2': predicted_numbers[1],
-                    'predicted_number_3': predicted_numbers[2],
-                    'predicted_number_4': predicted_numbers[3],
-                    'predicted_number_5': predicted_numbers[4],
-                    'predicted_number_6': predicted_numbers[5],
-                    'previous_prediction_1': prev_preds[0] if len(prev_preds) > 0 else None,
-                    'previous_prediction_2': prev_preds[1] if len(prev_preds) > 1 else None,
-                    'previous_prediction_3': prev_preds[2] if len(prev_preds) > 2 else None,
-                    'previous_prediction_4': prev_preds[3] if len(prev_preds) > 3 else None,
-                    'previous_prediction_5': prev_preds[4] if len(prev_preds) > 4 else None,
-                    'created_at': datetime.now().isoformat()
-                }
-                
-                # This creates a NEW prediction record with a new unique ID
-                # Old predictions are NOT deleted or replaced
-                new_prediction = instantdb.create_prediction(game_type, prediction_data)
-                prediction_id = new_prediction.get('id', 'unknown')
-                print(f"   ✅ Created NEW prediction record with ID: {prediction_id}")
-                logger.info(f"   ✅ Created NEW prediction record with ID: {prediction_id} (old predictions preserved)")
-                
-                predictions[model_name] = {
-                    'numbers': predicted_numbers,
-                    'previous_predictions': prev_preds[:5],
-                    'prediction_id': new_prediction.get('id')
-                }
-                
-            except Exception as e:
-                print(f"   ❌ {model_name} FAILED: {str(e)}")
-                logger.error(f"   ❌ {model_name} FAILED: {str(e)}")
-                predictions[model_name] = {
-                    'error': str(e)
-                }
-
-        # Miro: LLM multi-agent meta-predictor (after base models; same DB shape as others)
-        if getattr(Config, "MIRO_STRATEGY_ENABLED", True):
-            miro_label = "Miro"
-            if Config.LLM_API_KEY:
-                logger.info("Running Miro strategy (LLM multi-agent)…")
-                try:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                        fut = pool.submit(run_miro_strategy_predict, game_type, predictions)
-                        miro_numbers = fut.result(timeout=180)
-                    previous_predictions = instantdb.get_predictions(game_type, limit=50)
-                    prev_preds = []
-                    for prev_pred in previous_predictions:
-                        if prev_pred.get("model_type") == miro_label:
-                            prev_preds.append(
-                                [
-                                    prev_pred.get("predicted_number_1"),
-                                    prev_pred.get("predicted_number_2"),
-                                    prev_pred.get("predicted_number_3"),
-                                    prev_pred.get("predicted_number_4"),
-                                    prev_pred.get("predicted_number_5"),
-                                    prev_pred.get("predicted_number_6"),
-                                ]
-                            )
-                    while len(prev_preds) < 5:
-                        prev_preds.append(None)
-                    prediction_data = {
-                        "target_draw_date": target_draw_date,
-                        "model_type": miro_label,
-                        "predicted_number_1": miro_numbers[0],
-                        "predicted_number_2": miro_numbers[1],
-                        "predicted_number_3": miro_numbers[2],
-                        "predicted_number_4": miro_numbers[3],
-                        "predicted_number_5": miro_numbers[4],
-                        "predicted_number_6": miro_numbers[5],
-                        "previous_prediction_1": prev_preds[0] if len(prev_preds) > 0 else None,
-                        "previous_prediction_2": prev_preds[1] if len(prev_preds) > 1 else None,
-                        "previous_prediction_3": prev_preds[2] if len(prev_preds) > 2 else None,
-                        "previous_prediction_4": prev_preds[3] if len(prev_preds) > 3 else None,
-                        "previous_prediction_5": prev_preds[4] if len(prev_preds) > 4 else None,
-                        "created_at": datetime.now().isoformat(),
-                    }
-                    new_prediction = instantdb.create_prediction(game_type, prediction_data)
-                    predictions[miro_label] = {
-                        "numbers": miro_numbers,
-                        "previous_predictions": prev_preds[:5],
-                        "prediction_id": new_prediction.get("id"),
-                    }
-                    logger.info("Miro prediction stored: %s", miro_numbers)
-                except concurrent.futures.TimeoutError:
-                    logger.error("Miro strategy timed out after 180s")
-                    predictions[miro_label] = {"error": "Miro strategy timed out (180s)"}
-                except Exception as e:
-                    logger.exception("Miro strategy failed")
-                    predictions[miro_label] = {"error": str(e)}
-            else:
-                predictions[miro_label] = {
-                    "error": "LLM_API_KEY is not configured (required for Miro strategy)",
-                }
-        else:
-            predictions["Miro"] = {
-                "error": "Miro strategy is disabled (MIRO_STRATEGY_ENABLED=false)",
-            }
-
-        # COMPLETION LOGGING
-        n_cards = len(predictions)
-        print("\n" + "=" * 80)
-        print(f"PREDICTION GENERATION COMPLETE!")
-        print(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{n_cards}")
-        print(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{n_cards}")
-        print("=" * 80)
-        logger.info("\n" + "=" * 80)
-        logger.info(f"🎉 PREDICTION GENERATION COMPLETE!")
-        logger.info(f"   Successful: {sum(1 for p in predictions.values() if 'error' not in p)}/{n_cards}")
-        logger.info(f"   Failed: {sum(1 for p in predictions.values() if 'error' in p)}/{n_cards}")
-        logger.info("=" * 80)
-        
-        # Auto-calculate accuracy for newly generated predictions (non-blocking background task)
-        try:
-            # Use threading to run in background without blocking response
-            import threading
-            def run_auto_calculate():
-                import asyncio
-                try:
-                    asyncio.run(auto_calculate_accuracy_for_new_results(game_type))
-                except Exception as e:
-                    logger.warning(f"Background auto-calculation failed: {e}")
-            
-            thread = threading.Thread(target=run_auto_calculate)
-            thread.daemon = True
-            thread.start()
-            logger.info(f"✅ Triggered background auto-calculation of accuracy for {game_type}")
-        except Exception as e:
-            logger.warning(f"Failed to trigger auto-calculation after prediction generation: {e}")
-
-        council_report = None
-        if include_council and Config.LLM_API_KEY and getattr(Config, "LLM_COUNCIL_ENABLED", True):
-            try:
-                council_report = run_council_report(game_type, predictions, "")
-            except AuthenticationError as e:
-                logger.warning("Council report auth failed (non-critical): %s", e)
-                council_report = {"error": "LLM API key rejected; check LLM_API_KEY in .env"}
-            except Exception as e:
-                logger.warning("Council report failed (non-critical): %s", e)
-                council_report = {"error": str(e)}
-
-        response_payload = {
-            'success': True,
-            'game_type': game_type,
-            'target_draw_date': target_draw_date,
-            'predictions': predictions,
-            'timestamp': datetime.now().isoformat()
-        }
-        if council_report is not None:
-            response_payload['council_report'] = council_report
-        return response_payload
-    
+        out = _prediction_pipeline(game_type, include_council, stream_queue=None)
+        return out
     except HTTPException:
         raise
     except Exception as e:
@@ -1034,22 +1212,38 @@ async def post_user_memory(body: MemoryUpsertRequest):
 
 
 @app.get("/api/graphs/{game_type}/cooccurrence")
-async def graph_cooccurrence(game_type: str):
+async def graph_cooccurrence(
+    game_type: str,
+    limit_draws: Optional[int] = Query(
+        None,
+        ge=50,
+        le=5000,
+        description="How many recent draws to aggregate (default from GRAPH_AGG_LIMIT_DRAWS)",
+    ),
+):
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
     try:
-        return cooccurrence_edges(game_type)
+        return cooccurrence_edges(game_type, limit_draws=limit_draws)
     except Exception as e:
         logger.exception("cooccurrence graph failed")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/graphs/{game_type}/markov-edges")
-async def graph_markov_edges(game_type: str):
+async def graph_markov_edges(
+    game_type: str,
+    limit_draws: Optional[int] = Query(
+        None,
+        ge=50,
+        le=5000,
+        description="How many recent draws to aggregate (default from GRAPH_AGG_LIMIT_DRAWS)",
+    ),
+):
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
     try:
-        return markov_ball_transitions(game_type)
+        return markov_ball_transitions(game_type, limit_draws=limit_draws)
     except Exception as e:
         logger.exception("markov-edges graph failed")
         raise HTTPException(status_code=500, detail=str(e))
@@ -1234,18 +1428,17 @@ async def get_statistics(game_type: str = Path(..., description="Game type ident
     """Get frequency statistics for a game."""
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
-    
-    try:
-        # Get frequency data using InstantDB
-        hot_numbers = get_hot_numbers(game_type, top_n=20)
-        cold_numbers = get_cold_numbers(game_type, bottom_n=20)
-        overdue_numbers = get_overdue_numbers(game_type)
-        
-        # Get all results for stats
-        all_results = instantdb.get_results(game_type, limit=10000, offset=0)
+
+    def _compute() -> Dict[str, Any]:
+        cap = int(getattr(Config, "STATS_RESULTS_LIMIT", 5000))
+        all_results = instantdb.get_results(
+            game_type, limit=cap, offset=0, order_by='draw_date.desc'
+        )
+        hot_numbers = get_hot_numbers(game_type, top_n=20, preloaded_results=all_results)
+        cold_numbers = get_cold_numbers(game_type, bottom_n=20, preloaded_results=all_results)
+        overdue_numbers = get_overdue_numbers(game_type, preloaded_results=all_results)
         total_draws = len(all_results)
-        
-        # Get date range
+
         date_range = None
         if all_results:
             dates = [r.get('draw_date') for r in all_results if r.get('draw_date')]
@@ -1254,13 +1447,12 @@ async def get_statistics(game_type: str = Path(..., description="Game type ident
                     'start': min(dates),
                     'end': max(dates)
                 }
-        
-        # Calculate average jackpot
+
         jackpots = [float(r.get('jackpot')) for r in all_results if r.get('jackpot')]
         avg_jackpot = None
         if jackpots:
             avg_jackpot = sum(jackpots) / len(jackpots)
-        
+
         return {
             'hot_numbers': [{'number': num, 'frequency': freq} for num, freq in hot_numbers],
             'cold_numbers': [{'number': num, 'frequency': freq} for num, freq in cold_numbers],
@@ -1269,7 +1461,10 @@ async def get_statistics(game_type: str = Path(..., description="Game type ident
             'date_range': date_range,
             'average_jackpot': avg_jackpot
         }
-    
+
+    try:
+        ttl = float(getattr(Config, "STATS_API_CACHE_TTL_SEC", 90))
+        return get_or_set(_stats_api_cache, ttl, game_type, _compute)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1278,28 +1473,26 @@ async def get_gaussian_distribution(game_type: str = Path(..., description="Game
     """Get Gaussian distribution analysis of winning numbers."""
     if game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game type")
-    
-    try:
-        # Get all results
-        all_results = instantdb.get_results(game_type, limit=10000, offset=0, order_by='draw_date.asc')
-        
+
+    def _compute() -> Dict[str, Any]:
+        cap = int(getattr(Config, "STATS_RESULTS_LIMIT", 5000))
+        all_results = instantdb.get_results(game_type, limit=cap, offset=0, order_by='draw_date.asc')
+
         distribution_data = []
         for result in all_results:
             numbers = [
                 result.get('number_1'), result.get('number_2'), result.get('number_3'),
                 result.get('number_4'), result.get('number_5'), result.get('number_6')
             ]
-            
-            # Filter out None values
+
             numbers = [n for n in numbers if n is not None]
-            
+
             if len(numbers) == 6:
-                # Calculate sum and product
                 numbers_sum = sum(numbers)
                 numbers_product = 1
                 for num in numbers:
                     numbers_product *= num
-                
+
                 distribution_data.append({
                     'sum': numbers_sum,
                     'product': numbers_product,
@@ -1353,7 +1546,10 @@ async def get_gaussian_distribution(game_type: str = Path(..., description="Game
             'distribution_data': [],
             'statistics': None
         }
-    
+
+    try:
+        ttl = float(getattr(Config, "STATS_API_CACHE_TTL_SEC", 90))
+        return get_or_set(_gaussian_api_cache, ttl, game_type, _compute)
     except Exception as e:
         logger.error(f"Error calculating Gaussian distribution: {e}")
         raise HTTPException(status_code=500, detail=str(e))

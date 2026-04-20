@@ -87,12 +87,13 @@ class Config:
     }
     
     # Google Sheets Configuration (replaces PCSO scraping)
+    # Native Google Sheets (not Excel-in-Drive); share each with the service account for API/tail reads.
     GOOGLE_SHEETS = {
-        'ultra_lotto_6_58': '1gh6yxZuaaCdx1imvJuk0-wXtMic4fcdm',
-        'grand_lotto_6_55': '1kuWordaccnhHATdaZr-qRhDPhPzxhcSU',
-        'super_lotto_6_49': '1tlAyfbtRTMXVWP-sk6V4jVW1fteZtMmq',
-        'mega_lotto_6_45': '1ydlcaUk_DG3XLPRcHk23tXBWvC83uPxH',
-        'lotto_6_42': '1E7_PnmkJc5wDL8OnEd1aljoUm5iDzEf3'
+        'ultra_lotto_6_58': '1FhWvnQhmbn3jKFpmLYjKj3ZLBAk_8hbcEUKzHyDZWJo',
+        'grand_lotto_6_55': '1FQ9MsdE5aK59d8xDEiDvA3uqHpTrzInqw5C_jwKXK_I',
+        'super_lotto_6_49': '1b32mERsAXoHFRkp0_GG0x9mzGi6BZObhneCm7nHTFK8',
+        'mega_lotto_6_45': '1Vda464f2t6M-yxeMMIXe0pHIG9VDLjayfF8QWcTrNDw',
+        'lotto_6_42': '1EZeJQmJgSZND_gFrPPlKrLGOquhXQK7_cKVN5B2eRDs',
     }
     
     # Google Sheets API Credentials (optional - can use public sheets)
@@ -101,8 +102,31 @@ class Config:
     GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE', None)
     # Incremental sync via gspread (requires service account + Sheets API; share spreadsheet with SA email)
     SHEETS_INCREMENTAL_ENABLED = os.getenv('SHEETS_INCREMENTAL_ENABLED', 'true').lower() in ('1', 'true', 'yes')
-    SHEETS_INCREMENTAL_WINDOW = int(os.getenv('SHEETS_INCREMENTAL_WINDOW', '250'))
+    # Rows per incremental Sheets API read (keep small for “latest rows only”; raise if you often paste many draws at once).
+    SHEETS_INCREMENTAL_WINDOW = int(os.getenv('SHEETS_INCREMENTAL_WINDOW', '40'))
     SHEETS_WORKSHEET_NAME = os.getenv('SHEETS_WORKSHEET_NAME', 'Sheet1')
+    # Max REST tail chunks per scrape (each chunk is SHEETS_INCREMENTAL_WINDOW rows).
+    SHEETS_TAIL_MAX_PASSES = int(os.getenv('SHEETS_TAIL_MAX_PASSES', '25'))
+    SHEETS_CSV_CACHE_TTL_SEC = float(os.getenv('SHEETS_CSV_CACHE_TTL_SEC', '120'))
+    SHEETS_APPEND_ONLY_DEDUPE = os.getenv('SHEETS_APPEND_ONLY_DEDUPE', 'true').lower() in ('1', 'true', 'yes')
+    SHEETS_APPEND_ONLY_DATE_SKEW_DAYS = int(os.getenv('SHEETS_APPEND_ONLY_DATE_SKEW_DAYS', '5'))
+    SHEETS_DEDUPE_TAIL_ROWS = int(os.getenv('SHEETS_DEDUPE_TAIL_ROWS', '80'))
+    # Above this many parsed sheet rows, dedupe loads the full results table (one query) instead of chunked OR queries.
+    # Keep high so typical full-sheet parses still use targeted key lookup (faster than loading 10k+ rows).
+    SHEETS_DEDUPE_FULL_TABLE_THRESHOLD = int(os.getenv('SHEETS_DEDUPE_FULL_TABLE_THRESHOLD', '20000'))
+
+    # Auto accuracy: full limits for manual / post-predict; smaller post-scrape limits avoid scanning 1000+ results per row added.
+    ACCURACY_AUTO_RESULTS_LIMIT = int(os.getenv('ACCURACY_AUTO_RESULTS_LIMIT', '1000'))
+    ACCURACY_AUTO_PREDICTIONS_LIMIT = int(os.getenv('ACCURACY_AUTO_PREDICTIONS_LIMIT', '1000'))
+    ACCURACY_POST_SCRAPE_RESULTS_LIMIT = int(os.getenv('ACCURACY_POST_SCRAPE_RESULTS_LIMIT', '120'))
+    ACCURACY_POST_SCRAPE_PREDICTIONS_LIMIT = int(os.getenv('ACCURACY_POST_SCRAPE_PREDICTIONS_LIMIT', '500'))
+
+    # Graph aggregates (co-occurrence, Markov): fewer draws = faster; raise for research-grade viz
+    GRAPH_AGG_LIMIT_DRAWS = int(os.getenv('GRAPH_AGG_LIMIT_DRAWS', '800'))
+    GRAPH_AGG_CACHE_TTL_SEC = float(os.getenv('GRAPH_AGG_CACHE_TTL_SEC', '120'))
+    # Statistics + Gaussian dashboard: cap rows per request and cache JSON responses briefly
+    STATS_RESULTS_LIMIT = int(os.getenv('STATS_RESULTS_LIMIT', '5000'))
+    STATS_API_CACHE_TTL_SEC = float(os.getenv('STATS_API_CACHE_TTL_SEC', '90'))
     
     # ML Model Hyperparameters
     XGBOOST_PARAMS = {
@@ -189,6 +213,14 @@ class Config:
         # Markovian state
         'markov_sum_buckets': 5,
     }
+
+    # /api/predict: run the six core models concurrently (wall time ≈ slowest model, not sum of all)
+    PREDICT_PARALLEL = os.getenv('PREDICT_PARALLEL', 'true').lower() in ('1', 'true', 'yes')
+    PREDICT_MAX_WORKERS = max(1, min(int(os.getenv('PREDICT_MAX_WORKERS', '6')), 12))
+    # DRL speed knobs (lower = faster; quality tradeoff). DRL_MC_VALIDATION_SAMPLES=0 uses DRL_PARAMS default.
+    DRL_PREDICT_EPISODES = max(1, min(int(os.getenv('DRL_PREDICT_EPISODES', '3')), 20))
+    _drl_mc_env = os.getenv('DRL_MC_VALIDATION_SAMPLES', '').strip()
+    DRL_MC_VALIDATION_SAMPLES = int(_drl_mc_env) if _drl_mc_env else 0
 
     # Apify (PCSO / bulletin JSON ingest — separate from Google Sheets)
     APIFY_API_TOKEN = os.getenv('APIFY_API_TOKEN', '') or None

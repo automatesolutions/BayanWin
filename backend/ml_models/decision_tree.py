@@ -8,6 +8,7 @@ Improvements:
 4. Monte Carlo (Ulam) prediction - large-scale simulation with guard rails
 5. Guard rails - sum 100-250 filter
 """
+import os
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.cluster import KMeans
@@ -307,7 +308,9 @@ class DecisionTreeModel:
         max_number = self.max_number
         sum_min = self.sum_min or 100
         sum_max = self.sum_max or 250
-        n_candidates = self.params.get('mc_candidates', 100_000)
+        default_mc = int(self.params.get('mc_candidates', 100_000))
+        n_candidates = int(os.getenv('DECISION_TREE_MC_CANDIDATES', str(default_mc)))
+        n_candidates = max(5_000, min(n_candidates, 500_000))
         batch_size = self.params.get('mc_batch_size', 10_000)
         temperature = self.params.get('mc_temperature', 1.0)
         uniform_prior = self.params.get('mc_uniform_prior', 0.0)

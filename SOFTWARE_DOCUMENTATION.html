@@ -286,15 +286,19 @@
                 <h2>📋 System Overview</h2>
                 <p>
                     <strong>BayanWin</strong> is a modern, full-stack web application that predicts lottery numbers 
-                    using multiple machine learning models. The system scrapes historical lottery data from Google Sheets, 
-                    stores it in InstantDB (a Backend-as-a-Service platform),                     and uses 6 different ML algorithms to 
-                    generate predictions for multiple lottery games.
+                    using multiple machine learning models. The system scrapes historical lottery data from Google Sheets 
+                    (with optional incremental sync and full reconcile), can merge supplemental rows from 
+                    <strong>Apify</strong> actors when configured, stores everything in InstantDB (Backend-as-a-Service), 
+                    and runs <strong>six core ML predictors</strong> plus an optional <strong>Miro</strong> LLM meta-strategy 
+                    that synthesizes a final pick from model outputs. An optional LLM &ldquo;council&rdquo; can produce an 
+                    advisory report, and the API exposes <strong>D3-powered graph</strong> data (co-occurrence, Markov edges, Sankey).
                 </p>
 
                 <div class="highlight">
                     <strong>Key Capabilities:</strong> The system supports 5 lottery games (Ultra Lotto 6/58, Grand Lotto 6/55, 
                     Super Lotto 6/49, Mega Lotto 6/45, and Lotto 6/42) and provides real-time predictions, statistical analysis, 
-                    error distance tracking, and Gaussian distribution visualization.
+                    error distance tracking, Gaussian distribution visualization, graph analytics endpoints for the frontend, 
+                    and lightweight per-user memory hooks for council context.
                 </div>
             </section>
 
@@ -313,7 +317,8 @@
                             <li>Vite (Build Tool)</li>
                             <li>Tailwind CSS</li>
                             <li>Axios (HTTP Client)</li>
-                            <li>Recharts (Visualization)</li>
+                            <li>Recharts (charts)</li>
+                            <li>D3.js (graph visualizations)</li>
                         </ul>
                     </div>
 
@@ -322,9 +327,10 @@
                         <ul>
                             <li>FastAPI (Python)</li>
                             <li>Uvicorn (ASGI Server)</li>
-                            <li>6 ML Models</li>
-                            <li>Google Sheets Scraper</li>
-                            <li>Node.js Bridge (InstantDB Admin SDK)</li>
+                            <li>6 core ML models + optional Miro (LLM)</li>
+                            <li>Google Sheets scraper (CSV / gspread incremental)</li>
+                            <li>Optional Apify ingest &amp; webhooks</li>
+                            <li>Node.js bridge (InstantDB Admin SDK)</li>
                         </ul>
                     </div>
 
@@ -371,7 +377,7 @@
                         <!-- Google Sheets Scraper -->
                         <rect x="400" y="320" width="300" height="60" rx="10" fill="#E67E22" stroke="#D35400" stroke-width="2" class="flow-box data"/>
                         <text x="550" y="350" text-anchor="middle" fill="white" font-size="14" font-weight="bold">Google Sheets Scraper</text>
-                        <text x="550" y="370" text-anchor="middle" fill="white" font-size="12">(Pandas CSV Export)</text>
+                        <text x="550" y="370" text-anchor="middle" fill="white" font-size="11">(CSV + incremental; full_sync option)</text>
 
                         <!-- Data Validation -->
                         <rect x="400" y="420" width="300" height="60" rx="10" fill="#E67E22" stroke="#D35400" stroke-width="2" class="flow-box data"/>
@@ -426,7 +432,8 @@
 
                         <!-- Save Predictions -->
                         <rect x="400" y="1060" width="300" height="60" rx="10" fill="#27AE60" stroke="#229954" stroke-width="2" class="flow-box db"/>
-                        <text x="550" y="1090" text-anchor="middle" fill="white" font-size="14" font-weight="bold">Save Predictions to InstantDB</text>
+                        <text x="550" y="1085" text-anchor="middle" fill="white" font-size="13" font-weight="bold">Save Predictions to InstantDB</text>
+                        <text x="550" y="1105" text-anchor="middle" fill="white" font-size="11">(+ Miro LLM pick when enabled)</text>
 
                         <!-- Auto-Calculate Accuracy -->
                         <rect x="400" y="1160" width="300" height="60" rx="10" fill="#3498DB" stroke="#2980B9" stroke-width="2" class="flow-box"/>
@@ -502,8 +509,8 @@
                     <ol>
                         <li><strong>User Interaction:</strong> User selects a game type, which automatically triggers data scraping</li>
                         <li><strong>Data Collection:</strong> System scrapes latest data from Google Sheets, validates it, and saves to InstantDB</li>
-                        <li><strong>Prediction Generation:</strong> User clicks "Generate Predictions" → System fetches historical data → All 6 ML models train and predict in parallel</li>
-                        <li><strong>Data Storage:</strong> Predictions are saved to InstantDB for future reference and accuracy tracking</li>
+                        <li><strong>Prediction Generation:</strong> User clicks &ldquo;Generate Predictions&rdquo; → historical data is loaded → six core models run with timeouts (thread pool) → <strong>Miro</strong> (optional LLM swarm) may add a synthesized pick → optional <strong>council report</strong> if requested and <code>LLM_API_KEY</code> is set</li>
+                        <li><strong>Data Storage:</strong> All model picks (including Miro) are saved to InstantDB for history and accuracy tracking</li>
                         <li><strong>Analysis & Display:</strong> Predictions are displayed, accuracy is auto-calculated, and statistics/analysis are shown</li>
                         <li><strong>DRL Learning Loop:</strong> DRL agent receives feedback from accuracy calculations to improve future predictions</li>
                     </ol>
@@ -515,17 +522,17 @@
                 <h4>Stage 1: User selects a game → Auto-scrape</h4>
                 <ul>
                     <li><strong>Frontend:</strong> <code>frontend/src/App.jsx</code> — <code>handleGameSelect(gameType)</code> runs when the user picks a game. It calls <code>scrapeData({ game_type: gameType })</code> from <code>frontend/src/services/api.js</code>.</li>
-                    <li><strong>API call:</strong> <code>api.js</code> uses Axios with <code>API_BASE_URL</code> from <code>frontend/src/utils/constants.js</code> (default <code>http://localhost:5000</code>). Request: <code>POST /api/scrape</code> with body <code>{ game_type: "…" }</code>.</li>
-                    <li><strong>Backend:</strong> <code>backend/app.py</code> — <code>@app.post("/api/scrape")</code> (around line 454). It creates <code>GoogleSheetsScraper()</code> from <code>backend/scrapers/google_sheets_scraper.py</code>, then <code>scraper.scrape_game(request.game_type)</code> or <code>scraper.scrape_all_games()</code>. Data is written via <code>backend/services/instantdb_client.py</code> (writes often use Node.js scripts in <code>backend/scripts/</code>, e.g. <code>save_results.js</code>).</li>
-                    <li><strong>After scrape:</strong> If new results were added, the backend runs <code>auto_calculate_accuracy_for_new_results()</code> and may trigger DRL learning. Response (<code>success</code>, <code>stats</code>, <code>message</code>) is returned to the frontend.</li>
+                    <li><strong>API call:</strong> <code>api.js</code> uses Axios with <code>API_BASE_URL</code> from <code>frontend/src/utils/constants.js</code> (default <code>http://localhost:5000</code>). Request: <code>POST /api/scrape</code> with body <code>{ game_type, full_sync }</code>. Query <code>?full_sync=true</code> forces a full CSV reconcile and resets the sheet cursor. Omitted <code>game_type</code> scrapes all configured games.</li>
+                    <li><strong>Backend:</strong> <code>backend/app.py</code> — <code>@app.post("/api/scrape")</code>. It builds <code>GoogleSheetsScraper()</code> from <code>backend/scrapers/google_sheets_scraper.py</code>, then <code>scrape_game(..., full_sync=...)</code> or <code>scrape_all_games(full_sync=...)</code>. Writes go through <code>backend/services/instantdb_client.py</code> / Node scripts (e.g. <code>save_results.js</code>). When Apify is configured, a successful scrape may also run automatic actor ingest; the JSON response can include <code>apify_ingest</code> and a combined message (Sheets + Apify counts).</li>
+                    <li><strong>After scrape:</strong> If new results were added, the backend runs <code>auto_calculate_accuracy_for_new_results()</code> and may trigger DRL learning. Response includes <code>success</code>, <code>stats</code>, <code>full_sync</code>, <code>message</code>, and optional <code>apify_ingest</code>.</li>
                 </ul>
 
                 <h4>Stage 2: User clicks “Generate Predictions”</h4>
                 <ul>
-                    <li><strong>Frontend:</strong> <code>App.jsx</code> — <code>handleGeneratePredictions()</code> calls <code>generatePredictions(selectedGame)</code> → <code>POST /api/predict/{game_type}</code>.</li>
-                    <li><strong>Backend:</strong> <code>app.py</code> — <code>@app.post("/api/predict/{game_type}")</code> (around line 580). Iterates over the six models in <code>model_types</code> (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, NashHotFilter, DRL). Each runs <code>model_instance.predict(game_type)</code> in a <code>ThreadPoolExecutor</code> (60s or 120s timeout). Historical data comes from <code>get_historical_data()</code> in <code>backend/utils/data_processor.py</code>, which reads from InstantDB via the <code>instantdb</code> client.</li>
-                    <li><strong>Saving:</strong> Each prediction is stored with <code>instantdb.create_prediction(game_type, prediction_data)</code> (Node.js Admin SDK bridge). A background thread then runs <code>auto_calculate_accuracy_for_new_results(game_type)</code>.</li>
-                    <li><strong>Response:</strong> Returns <code>{ success, game_type, target_draw_date, predictions, timestamp }</code>. Frontend stores <code>response.data.predictions</code> and shows them in <code>PredictionDisplay</code>.</li>
+                    <li><strong>Frontend:</strong> <code>App.jsx</code> — <code>handleGeneratePredictions()</code> calls <code>generatePredictions(selectedGame)</code> → <code>POST /api/predict/{game_type}</code>. Optional query <code>?include_council=true</code> asks the backend to attach an LLM council report to the same response (requires API key and council enabled).</li>
+                    <li><strong>Backend:</strong> <code>app.py</code> — <code>@app.post("/api/predict/{game_type}")</code>. Iterates six core entries in <code>model_types</code> (XGBoost, DecisionTree, MarkovChain, AnomalyDetection, NashHotFilter, DRL). Each runs <code>model_instance.predict(game_type)</code> in a <code>ThreadPoolExecutor</code> (60s per model, 120s for DRL). Then, if <code>MIRO_STRATEGY_ENABLED</code> and <code>LLM_API_KEY</code> are set, <code>run_miro_strategy_predict</code> in <code>backend/services/miro_strategy.py</code> runs in a separate pool with up to ~180s timeout; the <strong>Miro</strong> pick is stored like other models. If the key is missing or Miro is disabled, <code>predictions</code> still contains a <strong>Miro</strong> entry with an explanatory <code>error</code> string for the UI.</li>
+                    <li><strong>Saving:</strong> Each successful prediction is stored with <code>instantdb.create_prediction(game_type, prediction_data)</code>. A background thread runs <code>auto_calculate_accuracy_for_new_results(game_type)</code>.</li>
+                    <li><strong>Response:</strong> <code>{ success, game_type, target_draw_date, predictions, timestamp }</code> plus optional <code>council_report</code>. <code>predictions</code> includes core models and <strong>Miro</strong>. Frontend maps these into <code>PredictionDisplay</code> (core grid + Miro panel).</li>
                 </ul>
 
                 <h4>Stage 3: Viewing results, stats, and accuracy</h4>
@@ -534,6 +541,8 @@
                     <li><strong>Statistics:</strong> <code>StatisticsPanel</code> → <code>getStatistics(gameType)</code> → <code>GET /api/stats/{game_type}</code>. Backend uses <code>utils/frequency_analysis.py</code> (e.g. <code>get_hot_numbers</code>, <code>get_cold_numbers</code>, <code>get_overdue_numbers</code>).</li>
                     <li><strong>Error distance:</strong> <code>ErrorDistanceAnalysis</code> → <code>getPredictionAccuracy(gameType)</code> → <code>GET /api/predictions/{game_type}/accuracy</code>. Backend uses <code>instantdb.get_prediction_accuracy()</code> and <code>utils/error_distance_calculator.py</code>.</li>
                     <li><strong>Gaussian:</strong> <code>getGaussianDistribution(gameType)</code> → <code>GET /api/stats/{game_type}/gaussian</code>; backend returns sum/product data for the scatter plot.</li>
+                    <li><strong>Graph analytics (D3):</strong> Co-occurrence pairs <code>GET /api/graphs/{game_type}/cooccurrence</code>, directed Markov-style edges <code>GET /api/graphs/{game_type}/markov-edges</code>, and Sankey-style model-vs-hot breakdown <code>POST /api/graphs/{game_type}/sankey</code> with the current predictions map in the body.</li>
+                    <li><strong>Council report (standalone):</strong> <code>POST /api/predict/{game_type}/council-report</code> with optional <code>user_key</code> to merge persisted memory into the prompt; can load latest predictions from DB when <code>use_latest</code> is true.</li>
                 </ul>
 
                 <h3>CORS middleware and frontend–backend connection</h3>
@@ -552,7 +561,10 @@
             <section>
                 <h2>🤖 Machine Learning Models</h2>
                 <p>
-                    BayanWin employs 6 distinct ML models, each using different algorithms and approaches to generate predictions:
+                    BayanWin runs <strong>six trainable / algorithmic predictors</strong> on every generation, then optionally adds 
+                    <strong>Miro</strong>—an LLM-driven meta-layer that reads those outputs and produces a single synthesized line 
+                    (stored as <code>model_type: "Miro"</code>). Configure via environment variables such as 
+                    <code>LLM_API_KEY</code>, <code>MIRO_STRATEGY_ENABLED</code>, and <code>LLM_COUNCIL_ENABLED</code>.
                 </p>
 
                 <div class="model-grid">
@@ -565,8 +577,8 @@
 
                     <div class="model-card orange">
                         <h4>2. Decision Tree Model</h4>
-                        <p><strong>Type:</strong> Random Forest Classifier</p>
-                        <p><strong>Approach:</strong> Frequency-based analysis using ensemble of decision trees to predict likely numbers based on historical frequency.</p>
+                        <p><strong>Type:</strong> Random Forest + structured features</p>
+                        <p><strong>Approach:</strong> Rich feature vectors (deltas, Markovian transitions, stats), K-Means clustering for localized behavior, PCA where used, and Monte Carlo sampling with sum guard rails—see <code>backend/ml_models/decision_tree.py</code>.</p>
                         <p><strong>Performance:</strong> ~4-6 seconds per prediction</p>
                     </div>
 
@@ -598,6 +610,14 @@
                         <p><strong>Performance:</strong> ~20-40 seconds per prediction</p>
                         <p><strong>Special Feature:</strong> Continuously improves through feedback loop from accuracy calculations</p>
                     </div>
+
+                    <div class="model-card" style="background: linear-gradient(135deg, #0f2027 0%, #203a43 50%, #2c5364 100%); color: white; grid-column: 1 / -1;">
+                        <h4 style="color: #7dd3fc; margin-top: 0;">7. Miro (LLM meta-strategy)</h4>
+                        <p><strong>Type:</strong> Multi-agent LLM synthesis (not a classical ML trainer)</p>
+                        <p><strong>Approach:</strong> Runs after the six core models, consumes their numeric outputs, and returns a single six-number pick; persisted like other predictions. Uses a small number of LLM calls per run; server-side timeout up to ~180 seconds.</p>
+                        <p><strong>Performance:</strong> Seconds to a few minutes, bounded by provider latency and timeout</p>
+                        <p><strong>Related:</strong> Optional <strong>LLM council</strong> advisory report (agreement, outliers, caveats)—either bundled via <code>?include_council=true</code> on predict or via <code>POST /api/predict/.../council-report</code>.</p>
+                    </div>
                 </div>
             </section>
 
@@ -606,8 +626,9 @@
                 <h2>📊 Data Flow & Storage</h2>
                 <h3>Data Sources</h3>
                 <ul>
-                    <li><strong>Google Sheets:</strong> Primary data source for historical lottery results. System reads CSV exports using Pandas.</li>
-                    <li><strong>InstantDB:</strong> Backend-as-a-Service database storing all results, predictions, and accuracy records.</li>
+                    <li><strong>Google Sheets:</strong> Primary source. Supports incremental pulls (e.g. gspread when credentials exist) and <code>full_sync</code> full CSV reconcile with cursor reset.</li>
+                    <li><strong>Apify (optional):</strong> When <code>APIFY_API_TOKEN</code> and an actor are configured, the backend can poll datasets (<code>POST /api/ingest/apify</code>), accept run-finished webhooks (<code>POST /api/webhooks/apify</code>), and optionally auto-ingest after a successful Sheets scrape—all deduped and additive to InstantDB.</li>
+                    <li><strong>InstantDB:</strong> Backend-as-a-Service database storing all results, predictions, accuracy records, and small optional user-memory blobs for council context.</li>
                 </ul>
 
                 <h3>Data Operations</h3>
@@ -648,7 +669,10 @@
                         <li><strong>Automated Data Scraping:</strong> Automatically scrapes new lottery data when a game is selected</li>
                         <li><strong>Duplicate Detection:</strong> Intelligently detects and skips duplicate entries based on draw_date and draw_number</li>
                         <li><strong>Real-time Training:</strong> ML models automatically retrain when switching between game types</li>
-                        <li><strong>Parallel Processing:</strong> All 6 models can process predictions simultaneously for faster results</li>
+                        <li><strong>Parallel Processing:</strong> Core models run under thread-pool timeouts; Miro runs afterward in its own pool</li>
+                        <li><strong>Miro &amp; Council:</strong> Optional LLM synthesis and advisory reporting alongside numeric picks</li>
+                        <li><strong>Graph Analytics API:</strong> Co-occurrence, Markov-edge, and Sankey payloads for D3 views</li>
+                        <li><strong>Apify Pipeline:</strong> Optional webhook or manual ingest to enrich results beyond Sheets</li>
                         <li><strong>Accuracy Tracking:</strong> Automatic calculation and tracking of prediction accuracy with multiple metrics</li>
                         <li><strong>Statistical Analysis:</strong> Comprehensive statistics including hot/cold numbers, overdue numbers, frequency analysis</li>
                         <li><strong>Gaussian Visualization:</strong> Visual scatter plots showing sum and product distributions with winner highlights</li>
@@ -713,12 +737,15 @@
                 <h3>Results & Data</h3>
                 <ul>
                     <li><code>GET /api/results/{game_type}</code> - Get historical results (paginated)</li>
-                    <li><code>POST /api/scrape</code> - Trigger data scraping from Google Sheets</li>
+                    <li><code>POST /api/scrape</code> - Scrape Google Sheets (body: optional <code>game_type</code>, <code>full_sync</code>; query <code>full_sync=true</code> overrides). Response may include <code>apify_ingest</code> when auto-ingest runs.</li>
+                    <li><code>POST /api/ingest/apify</code> - Poll an Apify run dataset and merge normalized rows into InstantDB</li>
+                    <li><code>POST /api/webhooks/apify</code> - Webhook for finished Apify runs (optional <code>X-Webhook-Secret</code> when configured)</li>
                 </ul>
 
                 <h3>Predictions</h3>
                 <ul>
-                    <li><code>POST /api/predict/{game_type}</code> - Generate predictions from all 6 ML models</li>
+                    <li><code>POST /api/predict/{game_type}</code> - Run six core ML models, then Miro when enabled; query <code>include_council</code> for optional LLM advisory report in the same response</li>
+                    <li><code>POST /api/predict/{game_type}/council-report</code> - Standalone LLM council summary (body: predictions map and/or <code>use_latest</code>, optional <code>user_key</code>)</li>
                     <li><code>GET /api/predictions/{game_type}</code> - Get stored predictions</li>
                     <li><code>GET /api/predictions/{game_type}/accuracy</code> - Get prediction accuracy metrics</li>
                     <li><code>POST /api/predictions/{prediction_id}/calculate-accuracy</code> - Calculate accuracy for a prediction</li>
@@ -730,14 +757,29 @@
                     <li><code>GET /api/stats/{game_type}/gaussian</code> - Get Gaussian distribution analysis</li>
                 </ul>
 
-                <h3>Accuracy Diagnostics</h3>
+                <h3>Graphs (D3 / analytics)</h3>
                 <ul>
-                    <li><code>GET /api/accuracy/diagnostics/{game_type}</code> - Get diagnostic info (result/prediction/accuracy counts, date ranges, matching status) for debugging</li>
+                    <li><code>GET /api/graphs/{game_type}/cooccurrence</code> - Pair co-occurrence counts within draws</li>
+                    <li><code>GET /api/graphs/{game_type}/markov-edges</code> - Directed transitions between consecutive draws</li>
+                    <li><code>POST /api/graphs/{game_type}/sankey</code> - Hot vs &ldquo;other&rdquo; counts from a current predictions map (JSON body)</li>
+                </ul>
+
+                <h3>Accuracy &amp; diagnostics</h3>
+                <ul>
+                    <li><code>GET /api/accuracy/diagnostics/{game_type}</code> - Counts, date ranges, and matching hints for debugging</li>
+                    <li><code>POST /api/accuracy/auto-calculate</code> - Manually trigger batch accuracy matching (optional <code>game_type</code> in body; all games if omitted)</li>
+                </ul>
+
+                <h3>User memory (optional)</h3>
+                <ul>
+                    <li><code>GET /api/memory/user/{user_key}</code> - Read persisted preferences / summary stub for a client key</li>
+                    <li><code>POST /api/memory/user</code> - Upsert pinned games, preferences, or last council summary snippet</li>
                 </ul>
 
                 <h3>System</h3>
                 <ul>
                     <li><code>GET /api/health</code> - API health check</li>
+                    <li><strong>OpenAPI:</strong> Interactive docs at <code>http://localhost:5000/docs</code> when the backend is running</li>
                 </ul>
             </section>
 
@@ -772,7 +814,7 @@
                     <li><strong>State Management:</strong> React hooks for local state management</li>
                     <li><strong>Real-time Updates:</strong> Immediate display of predictions as models complete</li>
                     <li><strong>Error Handling:</strong> Graceful error states and user feedback</li>
-                    <li><strong>Visualizations:</strong> Charts and graphs for statistical analysis</li>
+                    <li><strong>Visualizations:</strong> Recharts for charts; D3 for network/Sankey-style graphs fed by <code>/api/graphs/...</code></li>
                 </ul>
 
                 <h3>Database Schema</h3>
@@ -781,8 +823,9 @@
                 </p>
                 <ul>
                     <li><strong>Results:</strong> Historical lottery draw results (draw_date, numbers, jackpot, winners)</li>
-                    <li><strong>Predictions:</strong> ML model predictions (model_type, predicted_numbers, target_draw_date)</li>
+                    <li><strong>Predictions:</strong> Per-model rows (including <strong>Miro</strong>), six predicted numbers, target draw date, optional prior-prediction history fields</li>
                     <li><strong>Accuracy Records:</strong> Prediction accuracy metrics (error_distance, numbers_matched, distance_metrics)</li>
+                    <li><strong>User memory (if used):</strong> Small JSON records keyed for council personalization (not required for core predictions)</li>
                 </ul>
             </section>
 
@@ -831,9 +874,14 @@
                         <td>5 episodes of reinforcement learning</td>
                     </tr>
                     <tr>
-                        <td>Total Prediction Generation</td>
-                        <td>~30-65 seconds</td>
-                        <td>Parallel execution of all 6 models</td>
+                        <td>Miro (LLM synthesis)</td>
+                        <td>~15-180 seconds</td>
+                        <td>Runs after core models; separate pool; timeout capped at 180s per server config</td>
+                    </tr>
+                    <tr>
+                        <td>Total prediction generation (typical)</td>
+                        <td>~30-65s + Miro</td>
+                        <td>Core six overlap via thread pool; wall time often dominated by longest model (usually DRL) plus Miro if enabled</td>
                     </tr>
                 </table>
             </section>
@@ -851,6 +899,9 @@
                 <span class="badge">scikit-learn</span>
                 <span class="badge">NashHotFilter</span>
                 <span class="badge">Node.js</span>
+                <span class="badge">D3.js</span>
+                <span class="badge">LLM / Miro</span>
+                <span class="badge">Apify</span>
             </p>
         </footer>
     </div>
