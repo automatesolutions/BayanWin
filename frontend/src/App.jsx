@@ -23,17 +23,22 @@ function App() {
     // One refresh: load whatever is already in the DB for this game
     setResultsRefresh((n) => n + 1);
     scrapeData({ game_type: gameType })
-      .then((res) => {
-        const summary = res.data?.stats?.summary;
-        const sheetsAdded = Number(summary?.total_added ?? 0);
-        const apifyAdded = Number(res.data?.apify_ingest?.total_added ?? 0);
-        // Second refresh only when ingest actually wrote rows (avoids duplicate GETs)
-        if (sheetsAdded + apifyAdded > 0) {
-          setResultsRefresh((n) => n + 1);
-        }
+      .then(() => {
+        // Refetch after scrape completes (first fetch often ran before ingest finished).
+        setResultsRefresh((n) => n + 1);
       })
       .catch((error) => {
-        console.error('Sheet ingest failed:', error.response?.data?.detail || error.message);
+        const detail = error.response?.data?.detail;
+        const msg =
+          typeof detail === 'string'
+            ? detail
+            : error.response?.data?.message || error.message;
+        console.error('Sheet ingest failed:', msg);
+        window.alert(
+          `Could not sync data from Google Sheets to InstantDB.\n\n${msg}\n\n` +
+            'On Cloud Run, set GOOGLE_SERVICE_ACCOUNT_JSON (service account JSON) or make sheets public, ' +
+            'and ensure INSTANTDB_APP_ID / INSTANTDB_ADMIN_TOKEN are correct.'
+        );
       });
   };
 
@@ -86,6 +91,7 @@ function App() {
                 key={selectedGame}
                 gameType={selectedGame}
                 refreshKey={resultsRefresh}
+                onSheetSynced={() => setResultsRefresh((n) => n + 1)}
               />
 
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">

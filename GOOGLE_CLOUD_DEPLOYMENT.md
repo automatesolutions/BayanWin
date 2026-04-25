@@ -311,6 +311,29 @@ gcloud run deploy lof-backend `
 
 **Note:** Environment variables persist - you don't need to set them again unless you want to change them.
 
+### Background sheet sync (no browser open)
+
+Google Sheets does not push to your app. To keep InstantDB updated on a schedule (e.g. every 15–30 minutes) when nobody has the site open:
+
+1. Add a long random secret to Cloud Run **lof-backend** env: `CRON_SCRAPE_SECRET` (same as in `backend/.env` locally if you test there).
+2. Redeploy the backend so `POST /api/cron/ingest-sheets` is available.
+3. Enable **Cloud Scheduler API** and create a job in the **same region you use for other schedulers** (often `asia-southeast1`):
+
+```powershell
+gcloud services enable cloudscheduler.googleapis.com
+
+# Replace YOUR_BACKEND_URL, YOUR_REGION, and use a strong secret (no commas in the secret value)
+gcloud scheduler jobs create http lof-sheets-cron `
+  --location=YOUR_REGION `
+  --schedule="*/20 * * * *" `
+  --uri="YOUR_BACKEND_URL/api/cron/ingest-sheets" `
+  --http-method=POST `
+  --headers="Content-Type=application/json,X-Scrape-Cron-Secret=YOUR_CRON_SECRET" `
+  --message-body="{}"
+```
+
+The job runs an **incremental** scrape for all games (`full_sync=false`), same as a normal sync. Use a conservative schedule to limit API load (e.g. every 20–30 minutes).
+
 ---
 
 ### Frontend Updates

@@ -5,7 +5,16 @@ const { init, id } = require('@instantdb/admin');
 
 // Get credentials from environment - ensure they're valid strings
 const appId = process.env.INSTANTDB_APP_ID;
-const adminToken = process.env.INSTANTDB_ADMIN_TOKEN;
+let adminToken = process.env.INSTANTDB_ADMIN_TOKEN;
+if (adminToken) {
+  adminToken = adminToken.trim();
+  if (adminToken.toLowerCase().startsWith('bearer ')) {
+    adminToken = adminToken.slice(7).trim();
+  }
+  while (adminToken.startsWith('.')) {
+    adminToken = adminToken.slice(1).trim();
+  }
+}
 
 // Validate credentials
 if (!appId || appId === 'None' || appId === 'null' || appId.trim() === '') {

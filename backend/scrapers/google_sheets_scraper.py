@@ -105,19 +105,14 @@ class GoogleSheetsScraper:
         if probe is None:
             return None
         if not probe or not probe[0] or not any(str(c).strip() for c in probe[0] if c is not None):
+            # Cursor may point past blank rows while the last data row is above (e.g. user left empty
+            # rows at the bottom). Finalizing zero rows would never ingest those draws — fall back.
             logger.info(
-                "Sheets tail probe: no data at row %s — skipping full CSV (%s)",
+                "Sheets tail probe: no data at row %s — falling back to full CSV (%s)",
                 next_row,
                 sync_mode,
             )
-            return self._finalize_parse_and_write(
-                game_type,
-                game_name,
-                [],
-                0,
-                f"{sync_mode}_tail_probe_no_new_rows",
-                next_row,
-            )
+            return None
 
         if sheet_id not in self._sheet_header_row:
             header_row = self._sheets_rest_get_values(sheet_id, self._a1_range(ws, 1, 1))
@@ -331,8 +326,14 @@ class GoogleSheetsScraper:
                     )
                     return cached.copy()
 
-            sheet_name = "Sheet1"
-            url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet={sheet_name}"
+            sheet_name = str(Config.SHEETS_WORKSHEET_NAME)
+            enc_name = urllib.parse.quote(sheet_name)
+            # Extra query param reduces stale gviz/edge responses when the sheet was just edited.
+            bust = int(time.time())
+            url = (
+                f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq"
+                f"?tqx=out:csv&sheet={enc_name}&_={bust}"
+            )
 
             logger.info(f"Reading Google Sheet {sheet_id} using pandas...")
             df = pd.read_csv(url)
@@ -738,13 +739,13 @@ class GoogleSheetsScraper:
                 "Set GOOGLE_SERVICE_ACCOUNT_FILE + share the spreadsheet with the service account "
                 "to enable incremental row-range sync (much faster after the first run)."
             )
-        elif persist_cursor and sync_mode != "full":
-            tail_stats = self._try_tail_scrape_via_sheets_rest(
-                game_type, sheet_id, game_name, sync_mode
-            )
-            if tail_stats is not None:
-                return tail_stats
+        # Do not use Sheets REST "tail" (_try_tail_scrape_via_sheets_rest) here: that path only
+        # reads from the stored cursor downward. Rows inserted *above* the cursor, or any need for
+        # a true full reconcile, require downloading the full CSV. Incremental/tail is handled in
+        # scrape_game() via gspread when eligible.
 
+        # Full CSV read must not reuse a recent export cache (new rows would be invisible).
+        self._csv_cache.pop(sheet_id, None)
         df = self._read_sheet(sheet_id)
         logger.info(f"Read {len(df)} rows from sheet (CSV export, mode={sync_mode})")
         sheet_results = self._parse_sheet_data(df, game_type)
@@ -798,30 +799,15 @@ class GoogleSheetsScraper:
             )
             values = ws.get(range_a1)
             if not values:
-                # Advance by window so we don't get stuck if the sheet has blank gaps below the cursor.
-                next_row = cursor + window
-                try:
-                    instantdb.upsert_sheet_cursor(game_type, next_row, sheet_id)
-                except Exception as e:
-                    logger.warning("Could not persist sheet cursor after empty chunk: %s", e)
-                logger.info(
-                    "Empty incremental chunk at cursor=%s — advancing cursor by window=%s to %s",
+                # Do not advance the cursor: the last populated row may be *above* the cursor
+                # (blank rows at bottom, or cursor drift). Re-read the full sheet to reconcile.
+                logger.warning(
+                    "Empty incremental chunk at cursor=%s — running full sheet read to avoid skipping rows",
                     cursor,
-                    window,
-                    next_row,
                 )
-                return {
-                    "game_type": game_type,
-                    "game_name": game_name,
-                    "total_in_sheet": 0,
-                    "existing_in_db": None,
-                    "new_results": 0,
-                    "added": 0,
-                    "errors": [],
-                    "sync_mode": "incremental",
-                    "rows_fetched": 0,
-                    "cursor_after": next_row,
-                }
+                return await self._scrape_game_full_csv(
+                    game_type, sheet_id, game_name, "full_csv_after_empty_incremental", persist_cursor=True
+                )
 
             if sheet_id not in self._sheet_header_row:
                 self._sheet_header_row[sheet_id] = ws.row_values(1)

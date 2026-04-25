@@ -1,8 +1,53 @@
 """Configuration settings for the application."""
+import json
+import logging
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
+
+_log = logging.getLogger(__name__)
+
+
+def _resolve_google_service_account_file():
+    """
+    Path to GCP service account JSON for Sheets API.
+    - Local: set GOOGLE_SERVICE_ACCOUNT_FILE to a file path.
+    - Cloud Run / Docker: set GOOGLE_SERVICE_ACCOUNT_JSON to the raw JSON (e.g. from Secret Manager),
+      written to /tmp so gspread can use a file path.
+    """
+    json_raw = (os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON") or "").strip()
+    path = os.getenv("GOOGLE_SERVICE_ACCOUNT_FILE") or None
+    if not json_raw:
+        return path
+    try:
+        parsed = json.loads(json_raw)
+    except json.JSONDecodeError:
+        _log.warning(
+            "GOOGLE_SERVICE_ACCOUNT_JSON is set but not valid JSON; ignoring (use FILE path or fix JSON)."
+        )
+        return path
+    out_path = "/tmp/lof_gcp_service_account.json"
+    try:
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(parsed, f)
+    except OSError as e:
+        _log.warning("Could not write %s: %s", out_path, e)
+        return path
+    return out_path
+
+
+def _normalize_instantdb_admin_token(raw):
+    """Strip accidental Bearer prefix / leading dots from INSTANTDB_ADMIN_TOKEN (common Cloud Run paste mistakes)."""
+    if not raw or not str(raw).strip():
+        return None
+    t = str(raw).strip()
+    if t.lower().startswith("bearer "):
+        t = t[7:].strip()
+    while t.startswith("."):
+        t = t[1:].strip()
+    return t if t else None
+
 
 class Config:
     """Application configuration."""
@@ -26,8 +71,8 @@ class Config:
         INSTANTDB_APP_ID = None
     
     # InstantDB Admin Token (required for backend API access)
-    # Get from: InstantDB dashboard → Admin → Secret field
-    INSTANTDB_ADMIN_TOKEN = os.getenv('INSTANTDB_ADMIN_TOKEN')
+    # Get from: InstantDB dashboard → Admin → Secret field (raw token only; no "Bearer " prefix)
+    INSTANTDB_ADMIN_TOKEN = _normalize_instantdb_admin_token(os.getenv("INSTANTDB_ADMIN_TOKEN"))
     if not INSTANTDB_ADMIN_TOKEN:
         import logging
         logger = logging.getLogger(__name__)
@@ -51,6 +96,8 @@ class Config:
     
     # API Configuration
     API_KEY = os.getenv('API_KEY', None)
+    # Optional: if set, POST /api/cron/ingest-sheets requires header X-Scrape-Cron-Secret (for Cloud Scheduler).
+    CRON_SCRAPE_SECRET = (os.getenv('CRON_SCRAPE_SECRET') or '').strip() or None
     
     # Game Configurations
     GAMES = {
@@ -98,8 +145,8 @@ class Config:
     
     # Google Sheets API Credentials (optional - can use public sheets)
     # If sheets are public, no credentials needed
-    # If sheets are private, set GOOGLE_SERVICE_ACCOUNT_FILE path in .env
-    GOOGLE_SERVICE_ACCOUNT_FILE = os.getenv('GOOGLE_SERVICE_ACCOUNT_FILE', None)
+    # If sheets are private: GOOGLE_SERVICE_ACCOUNT_FILE (local path) or GOOGLE_SERVICE_ACCOUNT_JSON (Cloud Run / secrets)
+    GOOGLE_SERVICE_ACCOUNT_FILE = _resolve_google_service_account_file()
     # Incremental sync via gspread (requires service account + Sheets API; share spreadsheet with SA email)
     SHEETS_INCREMENTAL_ENABLED = os.getenv('SHEETS_INCREMENTAL_ENABLED', 'true').lower() in ('1', 'true', 'yes')
     # Rows per incremental Sheets API read (keep small for “latest rows only”; raise if you often paste many draws at once).

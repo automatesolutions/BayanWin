@@ -606,6 +606,167 @@ async def trigger_auto_calculate_accuracy(
             detail=f"Failed to calculate accuracy: {str(e)}. Check server logs for details."
         )
 
+
+async def _execute_sheets_scrape(
+    request: ScrapeRequest,
+    background_tasks: BackgroundTasks,
+    full_sync: Optional[bool],
+) -> Dict[str, Any]:
+    """Shared implementation for /api/scrape and /api/cron/ingest-sheets."""
+    logger.info("Starting scrape operation...")
+    scraper = GoogleSheetsScraper()
+    use_full_sync = bool(request.full_sync) or (full_sync is True)
+
+    try:
+        if request.game_type:
+            if request.game_type not in Config.GAMES:
+                raise HTTPException(status_code=400, detail=f"Invalid game type: {request.game_type}")
+
+            logger.info("Scraping single game: %s (full_sync=%s)", request.game_type, use_full_sync)
+            game_stats = await scraper.scrape_game(request.game_type, full_sync=use_full_sync)
+
+            _ex = game_stats.get('existing_in_db')
+            stats = {
+                'total_games': 1,
+                'games': {request.game_type: game_stats},
+                'summary': {
+                    'total_results_in_sheets': game_stats.get('total_in_sheet', 0),
+                    'total_existing_in_db': _ex if isinstance(_ex, int) else None,
+                    'total_new_results': game_stats.get('new_results', 0),
+                    'total_added': game_stats.get('added', 0)
+                }
+            }
+        else:
+            logger.info("Scraping all games (full_sync=%s)", use_full_sync)
+            stats = await scraper.scrape_all_games(full_sync=use_full_sync)
+
+        logger.info(f"Scrape completed. Stats: {stats}")
+    except Exception as scrape_error:
+        logger.error(f"Scrape operation failed: {scrape_error}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(
+            status_code=500,
+            detail=f"Scraping failed: {str(scrape_error)}"
+        )
+
+    total_added = stats.get('summary', {}).get('total_added', 0)
+    has_errors = any(
+        game_stats.get('error') for game_stats in stats.get('games', {}).values()
+    )
+
+    logger.info(f"Scraping summary: {total_added} results added, errors: {has_errors}")
+    logger.info(f"Game stats: {stats.get('games', {})}")
+
+    if has_errors and total_added == 0:
+        error_details = {
+            game: game_stats.get('error', 'Unknown error')
+            for game, game_stats in stats.get('games', {}).items()
+            if game_stats.get('error')
+        }
+        logger.error(f"All scraping failed: {error_details}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to scrape data: {error_details}"
+        )
+
+    games_payload = stats.get('games', {}) or {}
+    sync_modes = {
+        gt: (gs or {}).get('sync_mode')
+        for gt, gs in games_payload.items()
+        if isinstance(gs, dict) and gs.get('sync_mode')
+    }
+    _tie = stats.get('summary', {}).get('total_existing_in_db')
+    frontend_stats = {
+        'total_new': total_added,
+        'total_duplicates': _tie if isinstance(_tie, int) else 0,
+        'games_updated': [
+            game_type for game_type, game_stats in games_payload.items()
+            if game_stats.get('added', 0) > 0
+        ],
+        'summary': stats.get('summary', {}),
+        'games': games_payload,
+        'sync_modes': sync_modes,
+    }
+
+    apify_result = None
+    apify_added = 0
+    if getattr(Config, "APIFY_AUTO_INGEST", True) and Config.APIFY_API_TOKEN and getattr(Config, "APIFY_ACTOR_ID", None):
+        try:
+            apify_result = auto_ingest_from_apify_actor(request.game_type)
+            if not apify_result.get("skipped"):
+                apify_added = int(apify_result.get("total_added") or 0)
+                logger.info("Apify auto-ingest: added %s rows (run_id=%s)", apify_added, apify_result.get("run_id"))
+        except Exception as apify_err:
+            logger.warning("Apify auto-ingest failed (non-critical): %s", apify_err)
+            apify_result = {"skipped": False, "error": str(apify_err), "total_added": 0}
+
+    combined_added = total_added + apify_added
+
+    msg_parts = []
+    if total_added > 0:
+        msg_parts.append(f"Sheets: {total_added} new")
+    if apify_added > 0:
+        msg_parts.append(f"Apify: {apify_added} new")
+    if not msg_parts:
+        msg_core = "No new data to add (may already exist)"
+    else:
+        msg_core = " / ".join(msg_parts)
+
+    response: Dict[str, Any] = {
+        'success': True,
+        'stats': frontend_stats,
+        'full_sync': use_full_sync,
+        'timestamp': datetime.now().isoformat(),
+        'message': msg_core,
+    }
+    if apify_result is not None:
+        response["apify_ingest"] = apify_result
+
+    if combined_added == 0 and not has_errors:
+        logger.info("No new data added - all results may already exist in database")
+    else:
+        logger.info(f"✅ Sheets + Apify: {combined_added} new results to InstantDB (sheets={total_added}, apify={apify_added})")
+
+    if combined_added > 0:
+        background_tasks.add_task(_post_scrape_accuracy_and_drl, request.game_type)
+
+    return response
+
+
+@app.post("/api/cron/ingest-sheets")
+async def cron_ingest_sheets(
+    background_tasks: BackgroundTasks,
+    x_scrape_cron_secret: Optional[str] = Header(None, alias="X-Scrape-Cron-Secret"),
+):
+    """
+    Secured entry for Google Cloud Scheduler (or any cron) to update InstantDB from Google Sheets
+    when no user has the site open. Set CRON_SCRAPE_SECRET in Cloud Run env and the same value
+    in the scheduler's HTTP target header.
+    """
+    if not Config.CRON_SCRAPE_SECRET:
+        raise HTTPException(
+            status_code=503,
+            detail="CRON_SCRAPE_SECRET is not configured. Add it in Cloud Run environment variables to enable this endpoint.",
+        )
+    if not x_scrape_cron_secret or x_scrape_cron_secret != Config.CRON_SCRAPE_SECRET:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Scrape-Cron-Secret header")
+
+    try:
+        return await _execute_sheets_scrape(
+            ScrapeRequest(game_type=None, full_sync=False),
+            background_tasks,
+            full_sync=None,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in cron ingest: {e}")
+        import traceback
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Scraping failed: {str(e)}")
+
+
 @app.post("/api/scrape")
 async def scrape_data(
     request: ScrapeRequest,
@@ -614,142 +775,13 @@ async def scrape_data(
 ):
     """Trigger data scraping from Google Sheets. Can scrape all games or a specific game."""
     try:
-        logger.info("Starting scrape operation...")
-        scraper = GoogleSheetsScraper()
-        use_full_sync = bool(request.full_sync) or (full_sync is True)
-
-        try:
-            # If game_type is specified, scrape only that game
-            if request.game_type:
-                if request.game_type not in Config.GAMES:
-                    raise HTTPException(status_code=400, detail=f"Invalid game type: {request.game_type}")
-                
-                logger.info("Scraping single game: %s (full_sync=%s)", request.game_type, use_full_sync)
-                game_stats = await scraper.scrape_game(request.game_type, full_sync=use_full_sync)
-                
-                # Format response for single game
-                _ex = game_stats.get('existing_in_db')
-                stats = {
-                    'total_games': 1,
-                    'games': {request.game_type: game_stats},
-                    'summary': {
-                        'total_results_in_sheets': game_stats.get('total_in_sheet', 0),
-                        'total_existing_in_db': _ex if isinstance(_ex, int) else None,
-                        'total_new_results': game_stats.get('new_results', 0),
-                        'total_added': game_stats.get('added', 0)
-                    }
-                }
-            else:
-                # Scrape all games
-                logger.info("Scraping all games (full_sync=%s)", use_full_sync)
-                stats = await scraper.scrape_all_games(full_sync=use_full_sync)
-            
-            logger.info(f"Scrape completed. Stats: {stats}")
-        except Exception as scrape_error:
-            logger.error(f"Scrape operation failed: {scrape_error}")
-            import traceback
-            logger.error(traceback.format_exc())
-            raise HTTPException(
-                status_code=500,
-                detail=f"Scraping failed: {str(scrape_error)}"
-            )
-        
-        # Check if scraping actually succeeded
-        total_added = stats.get('summary', {}).get('total_added', 0)
-        has_errors = any(
-            game_stats.get('error') for game_stats in stats.get('games', {}).values()
-        )
-        
-        # Log summary
-        logger.info(f"Scraping summary: {total_added} results added, errors: {has_errors}")
-        logger.info(f"Game stats: {stats.get('games', {})}")
-        
-        if has_errors and total_added == 0:
-            # All games failed
-            error_details = {
-                game: game_stats.get('error', 'Unknown error')
-                for game, game_stats in stats.get('games', {}).items()
-                if game_stats.get('error')
-            }
-            logger.error(f"All scraping failed: {error_details}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to scrape data: {error_details}"
-            )
-        
-        # Format stats for frontend compatibility
-        games_payload = stats.get('games', {}) or {}
-        sync_modes = {
-            gt: (gs or {}).get('sync_mode')
-            for gt, gs in games_payload.items()
-            if isinstance(gs, dict) and gs.get('sync_mode')
-        }
-        _tie = stats.get('summary', {}).get('total_existing_in_db')
-        frontend_stats = {
-            'total_new': total_added,
-            'total_duplicates': _tie if isinstance(_tie, int) else 0,
-            'games_updated': [
-                game_type for game_type, game_stats in games_payload.items()
-                if game_stats.get('added', 0) > 0
-            ],
-            'summary': stats.get('summary', {}),
-            'games': games_payload,
-            'sync_modes': sync_modes,
-        }
-        
-        # Optional: run Apify Actor after Sheets (same game_type); merges into InstantDB
-        apify_result = None
-        apify_added = 0
-        if getattr(Config, "APIFY_AUTO_INGEST", True) and Config.APIFY_API_TOKEN and getattr(Config, "APIFY_ACTOR_ID", None):
-            try:
-                apify_result = auto_ingest_from_apify_actor(request.game_type)
-                if not apify_result.get("skipped"):
-                    apify_added = int(apify_result.get("total_added") or 0)
-                    logger.info("Apify auto-ingest: added %s rows (run_id=%s)", apify_added, apify_result.get("run_id"))
-            except Exception as apify_err:
-                logger.warning("Apify auto-ingest failed (non-critical): %s", apify_err)
-                apify_result = {"skipped": False, "error": str(apify_err), "total_added": 0}
-
-        combined_added = total_added + apify_added
-
-        # Return success response
-        msg_parts = []
-        if total_added > 0:
-            msg_parts.append(f"Sheets: {total_added} new")
-        if apify_added > 0:
-            msg_parts.append(f"Apify: {apify_added} new")
-        if not msg_parts:
-            msg_core = "No new data to add (may already exist)"
-        else:
-            msg_core = " / ".join(msg_parts)
-
-        response = {
-            'success': True,
-            'stats': frontend_stats,
-            'full_sync': use_full_sync,
-            'timestamp': datetime.now().isoformat(),
-            'message': msg_core,
-        }
-        if apify_result is not None:
-            response["apify_ingest"] = apify_result
-
-        # Log if no data was added (might be because all data already exists)
-        if combined_added == 0 and not has_errors:
-            logger.info("No new data added - all results may already exist in database")
-        else:
-            logger.info(f"✅ Sheets + Apify: {combined_added} new results to InstantDB (sheets={total_added}, apify={apify_added})")
-        
-        if combined_added > 0:
-            background_tasks.add_task(_post_scrape_accuracy_and_drl, request.game_type)
-
-        return response
+        return await _execute_sheets_scrape(request, background_tasks, full_sync)
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error in scrape endpoint: {e}")
         import traceback
         logger.error(traceback.format_exc())
-        # Return error in format frontend expects
         raise HTTPException(
             status_code=500,
             detail=f"Scraping failed: {str(e)}"
