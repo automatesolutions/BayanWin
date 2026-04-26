@@ -248,9 +248,11 @@
                     </ul>
                 </li>
                 <li><a href="#updating-deployments">Updating Deployments</a></li>
+                <li><a href="#custom-domain">Custom Domain (Optional)</a></li>
                 <li><a href="#verification">Verification & Testing</a></li>
                 <li><a href="#troubleshooting">Troubleshooting</a></li>
             </ul>
+            <p style="margin-top:12px;"><strong>Region:</strong> Examples use <code>asia-southeast1</code>. Use one region consistently for both Cloud Run services and Cloud Scheduler jobs that call your backend.</p>
         </div>
 
         <section id="prerequisites">
@@ -301,6 +303,7 @@ gcloud config set project YOUR_PROJECT_ID
 gcloud services enable cloudbuild.googleapis.com
 gcloud services enable run.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
+gcloud services enable cloudscheduler.googleapis.com
 
 # 4. Configure Docker authentication
 gcloud auth configure-docker</code></pre>
@@ -375,10 +378,14 @@ gcloud projects list</code></pre>
 
             <p><strong>Components:</strong></p>
             <ul>
-                <li><strong>Frontend</strong>: React app served via Nginx, deployed on Cloud Run</li>
-                <li><strong>Backend</strong>: FastAPI application, deployed on Cloud Run</li>
+                <li><strong>Frontend</strong>: React app served via Nginx, deployed on Cloud Run (<code>VITE_API_URL</code> is set at <strong>image build</strong> time)</li>
+                <li><strong>Backend</strong>: FastAPI on Cloud Run (<code>/api/scrape</code>, <code>/api/cron/ingest-sheets</code>, etc.)</li>
                 <li><strong>Database</strong>: InstantDB (cloud-hosted, no deployment needed)</li>
+                <li><strong>Optional</strong>: Cloud Scheduler → backend for sheet ingest without visitors</li>
             </ul>
+            <div class="note">
+                <strong>Resource sizing:</strong> Use at least <code>--memory 2Gi --cpu 2</code> for the backend; lower memory often causes OOM on cold start.
+            </div>
         </section>
 
         <section id="initial-deployment">
@@ -405,13 +412,17 @@ DONE</pre>
                 <pre><code>gcloud run deploy lof-backend `
   --image gcr.io/YOUR_PROJECT_ID/lof-backend `
   --platform managed `
-  --region us-central1 `
+  --region asia-southeast1 `
   --allow-unauthenticated `
   --port 8080 `
   --memory 2Gi `
   --cpu 2 `
   --timeout 300 `
   --set-env-vars "INSTANTDB_APP_ID=YOUR_APP_ID,INSTANTDB_ADMIN_TOKEN=YOUR_TOKEN"</code></pre>
+
+                <div class="note">
+                    <strong>Optional env vars:</strong> <code>CRON_SCRAPE_SECRET</code> (requires header <code>X-Scrape-Cron-Secret</code> on <code>POST /api/cron/ingest-sheets</code>); <code>GOOGLE_SERVICE_ACCOUNT_JSON</code> for incremental Sheets API on Cloud Run (see <code>backend/.env.example</code>). The repo includes <code>backend/.gcloudignore</code> to keep Cloud Build uploads small.
+                </div>
 
                 <div class="warning">
                     <strong>Important:</strong>
@@ -452,7 +463,7 @@ docker push gcr.io/YOUR_PROJECT_ID/lof-frontend</code></pre>
                 <pre><code>gcloud run deploy lof-frontend `
   --image gcr.io/YOUR_PROJECT_ID/lof-frontend `
   --platform managed `
-  --region us-central1 `
+  --region asia-southeast1 `
   --allow-unauthenticated `
   --port 8080</code></pre>
 
@@ -519,11 +530,29 @@ gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/lof-backend
 gcloud run deploy lof-backend `
   --image gcr.io/YOUR_PROJECT_ID/lof-backend `
   --platform managed `
-  --region us-central1</code></pre>
+  --region asia-southeast1</code></pre>
 
             <div class="note">
                 <strong>Note:</strong> Environment variables persist - you don't need to set them again unless you want to change them.
             </div>
+
+            <h3>Background sheet sync (no browser open)</h3>
+            <p>Google Sheets does not push changes to your app. To keep InstantDB updated on a schedule when nobody has the site open:</p>
+            <ol>
+                <li>Set <code>CRON_SCRAPE_SECRET</code> on the <code>lof-backend</code> Cloud Run service (long random value).</li>
+                <li>Ensure the backend revision includes <code>POST /api/cron/ingest-sheets</code>.</li>
+                <li>Enable Cloud Scheduler and create an HTTP job in the same region (e.g. <code>asia-southeast1</code>):</li>
+            </ol>
+            <pre><code>gcloud services enable cloudscheduler.googleapis.com
+
+gcloud scheduler jobs create http lof-sheets-cron `
+  --location=asia-southeast1 `
+  --schedule="*/20 * * * *" `
+  --uri="YOUR_BACKEND_URL/api/cron/ingest-sheets" `
+  --http-method=POST `
+  --headers="Content-Type=application/json,X-Scrape-Cron-Secret=YOUR_CRON_SECRET" `
+  --message-body="{}"</code></pre>
+            <p>This runs an <strong>incremental</strong> scrape for all games. Avoid overly aggressive schedules to limit API load.</p>
 
             <h3>Frontend Updates</h3>
             <p><strong>When to update:</strong></p>
@@ -548,11 +577,24 @@ docker push gcr.io/YOUR_PROJECT_ID/lof-frontend
 gcloud run deploy lof-frontend `
   --image gcr.io/YOUR_PROJECT_ID/lof-frontend `
   --platform managed `
-  --region us-central1</code></pre>
+  --region asia-southeast1</code></pre>
 
             <div class="warning">
                 <strong>Important:</strong> If your backend URL changed, use the new URL in the <code>--build-arg VITE_API_URL=...</code> command.
             </div>
+
+            <section id="custom-domain">
+                <h3>Custom domain (optional)</h3>
+                <p>Map a domain from your registrar (e.g. Namecheap) to Cloud Run so users see <code>https://yourdomain.net</code> instead of only <code>*.run.app</code>.</p>
+                <ol>
+                    <li>In Google Cloud Console: <strong>Cloud Run</strong> → your service → <strong>Manage custom domains</strong>.</li>
+                    <li>Complete <strong>ownership verification</strong> (TXT record at DNS).</li>
+                    <li>Add the <strong>A / AAAA</strong> and <strong>CNAME</strong> records Google shows; remove conflicting parking or redirects.</li>
+                    <li>Wait until status is <strong>Active</strong> and HTTPS is ready.</li>
+                    <li>If you map <code>api.yourdomain.com</code> to <code>lof-backend</code>, rebuild the frontend with <code>--build-arg VITE_API_URL=https://api.yourdomain.com</code>.</li>
+                </ol>
+                <p>The API URL is compiled into the static frontend bundle at <strong>build</strong> time, not read from Cloud Run at runtime.</p>
+            </section>
 
             <h3>Updating Environment Variables (Backend)</h3>
             <p><strong>When to update:</strong></p>
@@ -565,7 +607,7 @@ gcloud run deploy lof-frontend `
             <pre><code># Update environment variables without rebuilding
 gcloud run services update lof-backend `
   --set-env-vars "INSTANTDB_APP_ID=NEW_APP_ID,INSTANTDB_ADMIN_TOKEN=NEW_TOKEN" `
-  --region us-central1</code></pre>
+  --region asia-southeast1</code></pre>
 
             <p><strong>Or via Cloud Console:</strong></p>
             <ol>
@@ -605,20 +647,20 @@ npm run dev
 gcloud run services list
 
 # Get detailed info about a service
-gcloud run services describe lof-backend --region us-central1
-gcloud run services describe lof-frontend --region us-central1</code></pre>
+gcloud run services describe lof-backend --region asia-southeast1
+gcloud run services describe lof-frontend --region asia-southeast1</code></pre>
 
             <h3>Test Your Deployment</h3>
             <ol>
                 <li><strong>Frontend</strong>
                     <ul>
-                        <li>Open: <code>https://lof-frontend-XXXXX.run.app</code></li>
+                        <li>Open: <code>https://lof-frontend-XXXXX.run.app</code> or your custom domain</li>
                         <li>Should load the React application</li>
                     </ul>
                 </li>
                 <li><strong>Backend Health Check</strong>
                     <ul>
-                        <li>Open: <code>https://lof-backend-XXXXX.run.app/health</code></li>
+                        <li>Open: <code>https://lof-backend-XXXXX.run.app/api/health</code></li>
                         <li>Should return: <code>{"status":"healthy"}</code></li>
                     </ul>
                 </li>
@@ -647,13 +689,20 @@ gcloud run services describe lof-frontend --region us-central1</code></pre>
 gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=lof-backend" --limit 50
 
 # Verify environment variables
-gcloud run services describe lof-backend --region us-central1 --format="value(spec.template.spec.containers[0].env)"</code></pre>
+gcloud run services describe lof-backend --region asia-southeast1 --format="value(spec.template.spec.containers[0].env)"</code></pre>
             <p><strong>Common issues:</strong></p>
             <ul>
                 <li>Missing <code>INSTANTDB_APP_ID</code> or <code>INSTANTDB_ADMIN_TOKEN</code></li>
                 <li>Port mismatch (should be 8080)</li>
-                <li>Memory too low (increase with <code>--memory 4Gi</code>)</li>
+                <li>Memory too low (use at least <code>--memory 2Gi</code>; try <code>4Gi</code> if OOM persists)</li>
             </ul>
+
+            <h3>Duplicate backend in another region</h3>
+            <p>If <code>lof-backend</code> was deployed in two regions, the frontend only uses the URL baked into <code>VITE_API_URL</code>. Remove the unused service:</p>
+            <pre><code>gcloud run services delete lof-backend --region REGION_TO_REMOVE</code></pre>
+
+            <h3>Frontend Docker: vite Permission denied</h3>
+            <p>Do not copy local <code>node_modules</code> into the image; use <code>frontend/.dockerignore</code>. The Dockerfile runs <code>npx vite build</code> after <code>npm ci</code>.</p>
 
             <h3>Frontend Can't Connect to Backend</h3>
             <p><strong>Problem:</strong> Frontend shows API errors</p>
@@ -697,13 +746,13 @@ gcloud auth configure-docker</code></pre>
             <pre><code># Backend
 cd backend
 gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/lof-backend
-gcloud run deploy lof-backend --image gcr.io/YOUR_PROJECT_ID/lof-backend --platform managed --region us-central1 --allow-unauthenticated --port 8080 --memory 2Gi --cpu 2 --timeout 300 --set-env-vars "INSTANTDB_APP_ID=XXX,INSTANTDB_ADMIN_TOKEN=XXX"
+gcloud run deploy lof-backend --image gcr.io/YOUR_PROJECT_ID/lof-backend --platform managed --region asia-southeast1 --allow-unauthenticated --port 8080 --memory 2Gi --cpu 2 --timeout 300 --set-env-vars "INSTANTDB_APP_ID=XXX,INSTANTDB_ADMIN_TOKEN=XXX"
 
 # Frontend
 cd frontend
 docker build --build-arg VITE_API_URL=https://BACKEND_URL.run.app -t gcr.io/YOUR_PROJECT_ID/lof-frontend .
 docker push gcr.io/YOUR_PROJECT_ID/lof-frontend
-gcloud run deploy lof-frontend --image gcr.io/YOUR_PROJECT_ID/lof-frontend --platform managed --region us-central1 --allow-unauthenticated --port 8080
+gcloud run deploy lof-frontend --image gcr.io/YOUR_PROJECT_ID/lof-frontend --platform managed --region asia-southeast1 --allow-unauthenticated --port 8080
 
 # Schema (one-time)
 cd lof-v2-db
@@ -714,16 +763,16 @@ npm run dev  # Then Ctrl+C when done</code></pre>
             <pre><code># Update backend
 cd backend
 gcloud builds submit --tag gcr.io/YOUR_PROJECT_ID/lof-backend
-gcloud run deploy lof-backend --image gcr.io/YOUR_PROJECT_ID/lof-backend --region us-central1
+gcloud run deploy lof-backend --image gcr.io/YOUR_PROJECT_ID/lof-backend --region asia-southeast1
 
 # Update frontend
 cd frontend
 docker build --build-arg VITE_API_URL=https://BACKEND_URL.run.app -t gcr.io/YOUR_PROJECT_ID/lof-frontend .
 docker push gcr.io/YOUR_PROJECT_ID/lof-frontend
-gcloud run deploy lof-frontend --image gcr.io/YOUR_PROJECT_ID/lof-frontend --region us-central1
+gcloud run deploy lof-frontend --image gcr.io/YOUR_PROJECT_ID/lof-frontend --region asia-southeast1
 
 # Update env vars only
-gcloud run services update lof-backend --set-env-vars "KEY=value" --region us-central1</code></pre>
+gcloud run services update lof-backend --set-env-vars "KEY=value" --region asia-southeast1</code></pre>
         </section>
 
         <section>
@@ -757,8 +806,8 @@ gcloud run services update lof-backend --set-env-vars "KEY=value" --region us-ce
 
         <footer>
             <hr>
-            <p><strong>Last Updated:</strong> January 2025</p>
-            <p><strong>Project:</strong> LOF V2 - Lotto Prediction Application</p>
+            <p><strong>Last Updated:</strong> April 2026</p>
+            <p><strong>Project:</strong> LOF V2 (BayanWin) - Lotto Prediction Application</p>
             <p><strong>Deployment Platform:</strong> Google Cloud Platform (Cloud Run)</p>
         </footer>
     </div>

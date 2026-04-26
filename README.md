@@ -32,11 +32,14 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
 
 - **Automated Data Scraping**: 
   - Auto-scrapes new data when a game is selected
+  - **Latest results UI** also runs **incremental** sync on a timer (every **90 seconds**), when the browser tab regains focus, and shortly after changing the selected game — so the page can refresh without manual clicks (Google Sheets still does not push live; this polls the backend)
   - Default path uses the **Google Sheets API** (via `gspread`) to read only a sliding row window when `GOOGLE_SERVICE_ACCOUNT_FILE` is set; cursors are stored in InstantDB (`sheet_ingest_cursors`)
-  - Falls back to a **full public CSV export** per scrape when service-account credentials are missing
-  - `POST /api/scrape` accepts **`full_sync: true`** (body or `?full_sync=true`) to re-download the whole sheet, reconcile duplicates, and reset the ingest cursor — schedule weekly for safety
+  - Falls back to a **full public CSV export** per scrape when service-account credentials are missing; the public CSV URL uses **cache-busting** and the tab name from `SHEETS_WORKSHEET_NAME` (not a hardcoded sheet name)
+  - **`full_sync: true`** (body or `?full_sync=true`) re-downloads the **entire** sheet via CSV, reconciles duplicates, and resets the ingest cursor — use after rows were **inserted above** the cursor or for a periodic deep reconcile
+  - Incremental / default scrapes do **not** substitute a “tail only” read for full CSV when you requested full sync (full sync always pulls the whole export)
+  - **Background server sync**: `POST /api/cron/ingest-sheets` (optional `CRON_SCRAPE_SECRET`) runs the same ingest as a normal scrape so **Cloud Scheduler** can update InstantDB even when no one has the site open
   - Automatically detects and skips duplicate entries based on draw_date and draw_number
-  - Supports 5 lottery games with separate data sources
+  - Supports 5 lottery games with separate data sources (sheet IDs in `backend/config.py`)
   
 - **InstantDB Database Integration**:
   - Backend-as-a-Service (BaaS) for seamless data management
@@ -105,6 +108,7 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
 ```
 LOF_V2/
 ├── backend/              # FastAPI backend API
+│   ├── .gcloudignore    # Shrinks Cloud Build upload (venv, caches, .env)
 │   ├── app.py           # Main FastAPI application
 │   ├── config.py        # Configuration (InstantDB credentials, Google Sheets IDs)
 │   ├── services/        # InstantDB, Apify ingest, prediction council, Miro LLM strategy
@@ -117,6 +121,7 @@ LOF_V2/
 │   ├── utils/           # Utility functions
 │   └── requirements.txt # Python dependencies
 ├── frontend/            # React frontend with Vite
+│   ├── .dockerignore    # Keeps host node_modules out of image builds (Cloud Build–safe)
 │   ├── src/
 │   │   ├── components/  # React components
 │   │   ├── services/    # API service layer
@@ -207,6 +212,9 @@ MIRO_STRATEGY_ENABLED=true
 APIFY_API_TOKEN=
 APIFY_ACTOR_ID=
 APIFY_AUTO_INGEST=true
+
+# Optional — protect POST /api/cron/ingest-sheets (header X-Scrape-Cron-Secret); use with Cloud Scheduler
+# CRON_SCRAPE_SECRET=your-long-random-secret
 ```
 
 **Get your InstantDB credentials:**
@@ -217,7 +225,7 @@ APIFY_AUTO_INGEST=true
 - Sheet IDs are configured in `backend/config.py`
 - With **`GOOGLE_SERVICE_ACCOUNT_FILE`** set (and the spreadsheet shared with that service account as **Viewer**, **Google Sheets API** enabled on the GCP project), scrapes use **incremental range reads** and persist the next row in InstantDB
 - Without credentials, the backend uses the **public CSV export URL** every time (full download)
-- **Edits or new rows inserted above the current cursor** are not seen until you run a **`full_sync`** scrape (full CSV + cursor reset)
+- **New rows appended below** the cursor are picked up on the next incremental scrape (UI timer, game select, or cron). **Rows inserted above the cursor** still require a **`full_sync`** (full CSV + cursor reset) or fixing sheet order
 - Assume a single header row on the tab named by `SHEETS_WORKSHEET_NAME` (default `Sheet1`)
 
 7. **Deploy InstantDB Schema:**
@@ -271,14 +279,17 @@ The application is deployed on **Google Cloud Run** for production use. For comp
 ### Quick Deployment Overview
 
 **Deployed Services:**
-- **Frontend**: React app on Cloud Run (https://lof-frontend-XXXXX.run.app)
-- **Backend**: FastAPI API on Cloud Run (https://lof-backend-XXXXX.run.app)
+- **Frontend**: React app on Cloud Run (e.g. `https://lof-frontend-xxxxx.asia-southeast1.run.app` or a [custom domain](https://cloud.google.com/run/docs/mapping-custom-domains))
+- **Backend**: FastAPI API on Cloud Run (same region as the frontend; production has used **`asia-southeast1`**)
 - **Database**: InstantDB (cloud-hosted, no deployment needed)
 
 **Deployment Process:**
-1. **Backend**: Build and deploy to Cloud Run with InstantDB credentials
-2. **Frontend**: Build with backend URL and deploy to Cloud Run
-3. **Schema**: Deploy InstantDB schema once (local `npm run dev`)
+1. **Backend**: Build and deploy to Cloud Run with InstantDB credentials, **`--memory 2Gi --cpu 2`** (512 MiB is often too low for this stack), optional `CRON_SCRAPE_SECRET`
+2. **Frontend**: Docker build with `VITE_API_URL` pointing at the **HTTPS backend URL** (run.app or custom API host), then deploy to Cloud Run
+3. **Optional**: Cloud Scheduler → `POST /api/cron/ingest-sheets` for background sheet ingest (see [GOOGLE_CLOUD_DEPLOYMENT.md](./GOOGLE_CLOUD_DEPLOYMENT.md))
+4. **Schema**: Deploy InstantDB schema once (local `npm run dev` in `lof-v2-db`)
+
+**Build notes:** The frontend `Dockerfile` uses `npx vite build` so Cloud Build does not depend on a executable `vite` bit from `npm run build`; keep `frontend/.dockerignore` so local `node_modules` is not copied into the image.
 
 **Checking Your Project ID:**
 ```powershell
@@ -306,7 +317,8 @@ The `.env` file in the `backend` directory should contain:
 |----------|----------|-------------|
 | `INSTANTDB_APP_ID` | ✅ Yes | Your InstantDB App ID from dashboard |
 | `INSTANTDB_ADMIN_TOKEN` | ✅ Yes | Your InstantDB Admin Token (Secret) |
-| `GOOGLE_SERVICE_ACCOUNT_FILE` | ❌ No | Service account JSON — private sheets + incremental Sheets API sync |
+| `GOOGLE_SERVICE_ACCOUNT_FILE` | ❌ No | Service account JSON **path** (local) — private sheets + incremental Sheets API sync |
+| `GOOGLE_SERVICE_ACCOUNT_JSON` | ❌ No | Raw service-account JSON (e.g. Cloud Run secret) — same as FILE when path not used |
 | `SHEETS_INCREMENTAL_ENABLED` | ❌ No | `true`/`false` — disable API incremental path (default true) |
 | `SHEETS_INCREMENTAL_WINDOW` | ❌ No | Rows per incremental `get` (default `250`) |
 | `SHEETS_WORKSHEET_NAME` | ❌ No | Worksheet tab name (default `Sheet1`) |
@@ -318,11 +330,12 @@ The `.env` file in the `backend` directory should contain:
 | `APIFY_API_TOKEN` | ❌ No | Run actor + ingest dataset into InstantDB |
 | `APIFY_ACTOR_ID` | ❌ No | Actor id for PCSO / bulletin scrape |
 | `APIFY_AUTO_INGEST` | ❌ No | If true, optional auto-run after `POST /api/scrape` |
+| `CRON_SCRAPE_SECRET` | ❌ No | If set, `POST /api/cron/ingest-sheets` requires header `X-Scrape-Cron-Secret` (use with Cloud Scheduler) |
 
 **Important:** 
 - Never commit `.env` files to Git
 - InstantDB credentials are required for backend to function
-- Without `GOOGLE_SERVICE_ACCOUNT_FILE`, Google Sheets are accessed via public CSV export only (full sheet each scrape)
+- Without service-account credentials (`GOOGLE_SERVICE_ACCOUNT_FILE` locally or `GOOGLE_SERVICE_ACCOUNT_JSON` on Cloud Run), Google Sheets are accessed via public CSV export (full download per scrape path)
 - Node.js and `@instantdb/admin` are required for saving data
 - No PostgreSQL connection string needed - InstantDB handles everything!
 
@@ -348,8 +361,9 @@ Downstream **Miro**, graphs (co-occurrence, transitions), and statistics **autom
   - Body: `{ "game_type": "ultra_lotto_6_58", "full_sync": false }` (`game_type` optional — scrapes all games if omitted)
   - Query: `?full_sync=true` — same as `full_sync: true` in the body (weekly reconcile recommended)
   - Response stats include per-game `sync_mode`, `rows_fetched`, and `cursor_after` when available
-  - Auto-scrapes when a game is selected in the frontend
+  - Auto-scrapes when a game is selected in the frontend; Latest Results also triggers incremental sync periodically and on tab focus
   - Automatically skips duplicate entries based on draw_date and draw_number
+- `POST /api/cron/ingest-sheets` - Same ingest as `/api/scrape` for **scheduled** runs (all games, incremental by default). If `CRON_SCRAPE_SECRET` is set in the environment, the request must include header `X-Scrape-Cron-Secret: <same value>`
 
 ### Predictions
 - `POST /api/predict/{game_type}` - Generate predictions from all **six core ML models**, then **Miro** (if `LLM_API_KEY` is set and `MIRO_STRATEGY_ENABLED=true`)
@@ -382,7 +396,7 @@ Downstream **Miro**, graphs (co-occurrence, transitions), and statistics **autom
 - `GET /api/accuracy/diagnostics/{game_type}` - Get diagnostic info (results/predictions/accuracy counts, date ranges, matching status) for debugging
 
 ### Health Check
-- `GET /api/health` - API health check
+- `GET /api/health` - API health check (use this path on Cloud Run, e.g. `https://your-backend.../api/health`)
 
 **Full API Documentation:** Visit `http://localhost:5000/docs` when backend is running
 
@@ -548,6 +562,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **Configuration**: Use environment variables for all sensitive configuration
 - **Data Access**: Prefer a locked-down spreadsheet shared with a service account; public CSV remains a fallback without credentials
 - **API Security**: In production, configure CORS middleware to allow only specific origins
+- **Cron endpoint**: Keep `CRON_SCRAPE_SECRET` long and random; Cloud Scheduler should send it only in the `X-Scrape-Cron-Secret` header
 
 ## 📚 Documentation
 
@@ -573,7 +588,7 @@ MIT License
 
 ## 🔄 System Workflow Summary
 
-1. **User selects game** → Auto-scrapes data from Google Sheets
+1. **User selects game** → Auto-scrapes data from Google Sheets; Latest Results also **polls** incrementally on a timer and when the tab is focused. **Production:** Cloud Scheduler can call `/api/cron/ingest-sheets` so data stays fresh without visitors.
 2. **Data validation** → Saves new results to InstantDB (skips duplicates)
 3. **User generates predictions** → System fetches historical data
 4. **ML models train & predict** → Six core models in parallel; **Miro** (LLM) may follow
