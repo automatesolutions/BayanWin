@@ -13,6 +13,17 @@ const POSTS = [
     available: true,
   },
   {
+    slug: 'miro-prediction',
+    title: 'Miro prediction & the MiroFish wave',
+    subtitle:
+      'Multi-agent sandboxes, seed signals from the real world, and how BayanWin’s Miro layer echoes the same imagination.',
+    tag: 'LLM · Swarm',
+    readMins: 8,
+    accent: 'from-cyan-500/15 to-violet-900/25',
+    border: 'border-cyan-400/35',
+    available: true,
+  },
+  {
     slug: 'markov-chains-lottery',
     title: 'Markov chains & draw sequences',
     subtitle: 'How sequential models read transitions between past results.',

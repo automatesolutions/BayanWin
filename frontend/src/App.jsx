@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage';
 import AboutBayanWin from './pages/AboutBayanWin';
 import BlogIndex from './pages/BlogIndex';
 import BlogNashHotFilter from './pages/BlogNashHotFilter';
+import BlogMiroPrediction from './pages/BlogMiroPrediction';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/about" element={<AboutBayanWin />} />
         <Route path="/blog" element={<BlogIndex />} />
         <Route path="/blog/nash-hotfilter" element={<BlogNashHotFilter />} />
+        <Route path="/blog/miro-prediction" element={<BlogMiroPrediction />} />
       </Routes>
 
       <Footer />
