@@ -87,7 +87,8 @@ function PrivacyPolicy() {
           <p className="text-slate-400 text-xs">
             Where Philippine law requires <strong className="text-slate-300">consent</strong> for non-essential cookies or
             similar technologies (for example, some analytics or advertising), we will obtain it in line with applicable
-            rules. If we add AdSense or similar, we will align this policy with program requirements and the DPA.
+            rules. You can set cookie preferences in the site consent banner. If we add AdSense or similar, we will align
+            this policy with program requirements and the DPA.
           </p>
         </section>
 

@@ -40,9 +40,6 @@ const CouncilPanel = ({ gameType, userKey = undefined }) => {
           {loading ? 'Running…' : 'Summarize latest predictions'}
         </button>
       </div>
-      <p className="text-xs text-silver-400 mb-3">
-        Uses your LLM key on the server. Does not change ML models.
-      </p>
       {err && <p className="text-red-400 text-sm">{String(err)}</p>}
       {report && (
         <div className="space-y-3 text-sm text-silver-200">

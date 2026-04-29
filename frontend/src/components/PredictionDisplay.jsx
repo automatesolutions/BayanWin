@@ -48,7 +48,7 @@ const PredictionDisplay = ({ predictions, loading }) => {
       <div className="mb-6">
         <h2 className="text-2xl font-bold text-electric-400 mb-6 flex items-center">
           <span className="w-1 h-8 bg-orange-500 rounded-full mr-3 tech-glow"></span>
-          ML Model Predictions
+          Algorithmic Forecasting
         </h2>
         <div className="space-y-8">
           <div>
@@ -84,7 +84,7 @@ const PredictionDisplay = ({ predictions, loading }) => {
     <div className="mb-6">
       <h2 className="text-2xl font-bold text-electric-400 mb-6 flex items-center">
         <span className="w-1 h-8 bg-orange-500 rounded-full mr-3 tech-glow"></span>
-        ML Model Predictions
+        Algorithmic Forecasting
       </h2>
       <div className="space-y-8">
         <div>

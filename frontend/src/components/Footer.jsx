@@ -19,6 +19,14 @@ const Footer = () => {
               Privacy Policy
             </Link>
             <span className="text-silver-600 hidden sm:inline">·</span>
+            <Link to="/terms" className="text-electric-400 hover:text-electric-300 underline">
+              Terms of Use
+            </Link>
+            <span className="text-silver-600 hidden sm:inline">·</span>
+            <Link to="/responsible-play" className="text-electric-400 hover:text-electric-300 underline">
+              Responsible Play
+            </Link>
+            <span className="text-silver-600 hidden sm:inline">·</span>
             <Link to="/contact" className="text-electric-400 hover:text-electric-300 underline">
               Contact
             </Link>
