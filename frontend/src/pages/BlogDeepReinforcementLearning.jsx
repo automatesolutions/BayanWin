@@ -138,6 +138,29 @@ function BlogDeepReinforcementLearning() {
             from video games to the stock market.
           </p>
         </section>
+
+        <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">
+          <h2 id="related-articles" className="text-lg font-semibold text-white">
+            Related Articles
+          </h2>
+          <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
+            <li>
+              <Link to="/blog/markov-chains-lottery" className="text-electric-400 hover:text-electric-300 underline">
+                Markov chain lottery prediction Philippines guide
+              </Link>
+            </li>
+            <li>
+              <Link to="/blog/nash-hotfilter" className="text-electric-400 hover:text-electric-300 underline">
+                Game theory lottery analysis with NashHotFilter
+              </Link>
+            </li>
+            <li>
+              <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">
+                Algorithmic lottery prediction methodology
+              </Link>
+            </li>
+          </ul>
+        </section>
       </article>
     </main>
   );

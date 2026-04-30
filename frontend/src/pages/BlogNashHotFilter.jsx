@@ -176,6 +176,29 @@ function BlogNashHotFilter() {
             </p>
           </section>
 
+          <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">
+            <h2 id="related-articles" className="text-lg font-semibold text-white">
+              Related Articles
+            </h2>
+            <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
+              <li>
+                <Link to="/blog/markov-chains-lottery" className="text-amber-400 hover:text-amber-300 underline">
+                  Markov chain lottery analysis in the Philippines
+                </Link>
+              </li>
+              <li>
+                <Link to="/blog/deep-reinforcement-learning" className="text-amber-400 hover:text-amber-300 underline">
+                  AI lottery prediction methods with Deep RL
+                </Link>
+              </li>
+              <li>
+                <Link to="/methodology" className="text-amber-400 hover:text-amber-300 underline">
+                  BayanWin lottery methodology and limitations
+                </Link>
+              </li>
+            </ul>
+          </section>
+
           <p className="pt-4">
             <Link to="/blog" className="text-amber-400 hover:text-amber-300 text-sm font-medium">
               ← Back to Blog

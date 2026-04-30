@@ -146,6 +146,29 @@ function BlogMarkovChainsLottery() {
             guidance.
           </p>
         </section>
+
+        <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">
+          <h2 id="related-articles" className="text-lg font-semibold text-white">
+            Related Articles
+          </h2>
+          <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
+            <li>
+              <Link to="/blog/nash-hotfilter" className="text-electric-400 hover:text-electric-300 underline">
+                Game theory lottery analysis in the Philippines
+              </Link>
+            </li>
+            <li>
+              <Link to="/blog/deep-reinforcement-learning" className="text-electric-400 hover:text-electric-300 underline">
+                AI lottery prediction methods (Deep RL)
+              </Link>
+            </li>
+            <li>
+              <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">
+                PCSO data sources and model methodology
+              </Link>
+            </li>
+          </ul>
+        </section>
       </article>
     </main>
   );

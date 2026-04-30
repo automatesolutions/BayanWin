@@ -186,6 +186,29 @@ function BlogMiroPrediction() {
             </p>
           </section>
 
+          <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">
+            <h2 id="related-articles" className="text-lg font-semibold text-white">
+              Related Articles
+            </h2>
+            <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
+              <li>
+                <Link to="/blog/deep-reinforcement-learning" className="text-cyan-400 hover:text-cyan-300 underline">
+                  Deep reinforcement learning for AI lottery prediction
+                </Link>
+              </li>
+              <li>
+                <Link to="/blog/nash-hotfilter" className="text-cyan-400 hover:text-cyan-300 underline">
+                  Game theory lottery analysis (NashHotFilter)
+                </Link>
+              </li>
+              <li>
+                <Link to="/methodology" className="text-cyan-400 hover:text-cyan-300 underline">
+                  BayanWin methodology and model limitations
+                </Link>
+              </li>
+            </ul>
+          </section>
+
           <p className="pt-2">
             <Link to="/blog" className="text-cyan-400 hover:text-cyan-300 text-sm font-medium">
               ← Back to Blog

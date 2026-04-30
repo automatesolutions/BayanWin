@@ -15,6 +15,10 @@ const Footer = () => {
               Blog
             </Link>
             <span className="text-silver-600 hidden sm:inline">·</span>
+            <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">
+              Methodology
+            </Link>
+            <span className="text-silver-600 hidden sm:inline">·</span>
             <Link to="/privacy" className="text-electric-400 hover:text-electric-300 underline">
               Privacy Policy
             </Link>
