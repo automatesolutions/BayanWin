@@ -1,11 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-
-const CONSENT_KEY = 'bayanwin_cookie_consent_v1';
+import { CONSENT_STORAGE_KEY } from '../utils/cookieConsent';
 
 const readConsent = () => {
   try {
-    const raw = localStorage.getItem(CONSENT_KEY);
+    const raw = localStorage.getItem(CONSENT_STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -17,7 +16,7 @@ const saveConsent = (preferences) => {
     preferences,
     updated_at: new Date().toISOString(),
   };
-  localStorage.setItem(CONSENT_KEY, JSON.stringify(payload));
+  localStorage.setItem(CONSENT_STORAGE_KEY, JSON.stringify(payload));
   window.dispatchEvent(new CustomEvent('cookie-consent-updated', { detail: payload }));
 };
 

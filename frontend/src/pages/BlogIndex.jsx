@@ -24,6 +24,28 @@ const POSTS = [
     available: true,
   },
   {
+    slug: 'pcso-658-results-analysis',
+    title: 'PCSO 6/58 Results Analysis Philippines',
+    subtitle:
+      'A practical breakdown of Ultra Lotto 6/58 historical patterns, frequency ranges, and interpretation limits.',
+    tag: 'Game Analysis',
+    readMins: 9,
+    accent: 'from-emerald-500/15 to-teal-900/25',
+    border: 'border-emerald-400/35',
+    available: true,
+  },
+  {
+    slug: 'pcso-649-results-analysis',
+    title: 'PCSO 6/49 Results Analysis Philippines',
+    subtitle:
+      'How to interpret Super Lotto 6/49 draw behavior using transition, gap, and error-distance context.',
+    tag: 'Game Analysis',
+    readMins: 9,
+    accent: 'from-lime-500/15 to-green-900/20',
+    border: 'border-lime-400/35',
+    available: true,
+  },
+  {
     slug: 'markov-chains-lottery',
     title: "The Fascinating World of Markov Chains: From Drunkard’s Walks to Google’s Algorithms",
     subtitle: "From drunkard's walks to Google's algorithms, and why memoryless systems matter.",

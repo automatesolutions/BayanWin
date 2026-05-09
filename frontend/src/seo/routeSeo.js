@@ -57,6 +57,20 @@ const routeSeo = {
     canonical: `${SITE_URL}/blog/deep-reinforcement-learning`,
     ogType: 'article',
   },
+  '/blog/pcso-658-results-analysis': {
+    title: '6/58 Results Analysis Philippines | BayanWin',
+    description:
+      'Educational PCSO 6/58 results analysis in the Philippines with frequency, gap, and pattern interpretation guidance.',
+    canonical: `${SITE_URL}/blog/pcso-658-results-analysis`,
+    ogType: 'article',
+  },
+  '/blog/pcso-649-results-analysis': {
+    title: '6/49 Results Analysis Philippines | BayanWin',
+    description:
+      'Practical PCSO 6/49 results analysis in the Philippines using historical statistics and transparent model limitations.',
+    canonical: `${SITE_URL}/blog/pcso-649-results-analysis`,
+    ogType: 'article',
+  },
   '/blog/miro-prediction': {
     title: 'AI Lottery Prediction Workflow Philippines | BayanWin',
     description:

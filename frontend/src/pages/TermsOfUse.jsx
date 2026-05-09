@@ -23,7 +23,7 @@ function TermsOfUse() {
       <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-6">
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Terms of Use</h1>
-          <p className="text-slate-400 text-sm">Last updated: April 29, 2026</p>
+          <p className="text-slate-400 text-sm">Last updated: May 9, 2026</p>
         </header>
 
         <section className="space-y-2 text-sm leading-relaxed text-slate-300">
@@ -70,6 +70,13 @@ function TermsOfUse() {
           <p>
             We may use third-party tools for analytics, security, and advertising. Those services may set cookies subject
             to your consent choices and their own policies.
+          </p>
+          <p>
+            Advertising tags (for example Google AdSense, when active) are configured to load only on pages with
+            substantial editorial content—our <strong className="text-slate-100">Blog</strong>,{' '}
+            <strong className="text-slate-100">About BayanWin</strong>, and{' '}
+            <strong className="text-slate-100">Methodology</strong> sections—not on the primary interactive prediction
+            dashboard, Privacy, Terms, Responsible Play, Contact, or error-only screens.
           </p>
         </section>
 

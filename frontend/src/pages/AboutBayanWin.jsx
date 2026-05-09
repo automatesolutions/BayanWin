@@ -26,6 +26,7 @@ function AboutBayanWin() {
           <p className="text-slate-400 text-sm leading-relaxed">
             What the platform does, how historical data is used, and how the statistics and models fit together.
           </p>
+          <p className="text-xs text-slate-500 mt-3">Last updated: May 9, 2026</p>
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="overview-heading">
@@ -187,6 +188,21 @@ function AboutBayanWin() {
             provide financial, legal, or gambling advice. Past draws do not predict future outcomes. There are{' '}
             <strong className="text-slate-300">no guaranteed wins</strong>. Play responsibly and only within the law in your
             area.
+          </p>
+          <p className="mt-3">
+            Start with the{' '}
+            <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">
+              Methodology
+            </Link>{' '}
+            page, then read game-specific analyses like{' '}
+            <Link to="/blog/pcso-658-results-analysis" className="text-electric-400 hover:text-electric-300 underline">
+              PCSO 6/58 results analysis
+            </Link>{' '}
+            and{' '}
+            <Link to="/blog/pcso-649-results-analysis" className="text-electric-400 hover:text-electric-300 underline">
+              PCSO 6/49 results analysis
+            </Link>
+            .
           </p>
         </section>
       </article>

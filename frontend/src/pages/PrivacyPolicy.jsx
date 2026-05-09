@@ -26,7 +26,7 @@ function PrivacyPolicy() {
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Privacy Policy</h1>
           <p className="text-slate-400">
-            Last updated: April 29, 2026. BayanWin (“we”, “us”) operates the website{' '}
+            Last updated: May 9, 2026. BayanWin (“we”, “us”) operates the website{' '}
             <strong className="text-slate-300">bayanwin.net</strong> (the “Site”), primarily for users in the{' '}
             <strong className="text-slate-300">Philippines</strong>.
           </p>
@@ -83,6 +83,13 @@ function PrivacyPolicy() {
             performance, personalize or contextualize ads (depending on your region and partner policies), and prevent fraud.
             You can often control cookies through your browser settings. For Google products, see Google’s Ads and Privacy
             resources for opt-out and partner information.
+          </p>
+          <p className="text-slate-300">
+            Third-party ad scripts (such as Google AdSense, when enabled) are loaded only on{' '}
+            <strong className="text-slate-200">editorial and informational</strong> sections of the Site—specifically the Blog,
+            About BayanWin, and Methodology areas—not on the interactive prediction dashboard home screen, legal-only pages
+            (Privacy, Terms, Responsible Play, Contact), or similar utility-focused screens. This reduces the chance of ads
+            appearing where publisher-written editorial content is minimal.
           </p>
           <p className="text-slate-400 text-xs">
             Where Philippine law requires <strong className="text-slate-300">consent</strong> for non-essential cookies or

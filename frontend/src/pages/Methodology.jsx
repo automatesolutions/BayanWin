@@ -18,6 +18,7 @@ function Methodology() {
           <p className="text-slate-400 text-sm">
             How we process historical lottery results, generate analytics, and present algorithmic prediction outputs.
           </p>
+          <p className="text-xs text-slate-500 mt-3">Last updated: May 9, 2026</p>
         </header>
 
         <section className="space-y-2 text-sm leading-relaxed text-slate-300">
@@ -29,6 +30,14 @@ function Methodology() {
           <p>
             For official draw outcomes and jackpot verification, always use authorized PCSO channels. BayanWin is an
             independent analysis platform and not a government source.
+          </p>
+        </section>
+
+        <section className="space-y-2 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Update cadence</h2>
+          <p>
+            The site supports scheduled and on-demand data ingestion. Draw pages and analytics refresh as new records are
+            synchronized. When source feeds are delayed, dashboards may temporarily reflect stale data until the next sync.
           </p>
         </section>
 
@@ -76,6 +85,17 @@ function Methodology() {
               Terms of Use
             </Link>{' '}
             pages before relying on model outputs.
+          </p>
+          <p>
+            For practical examples, read{' '}
+            <Link to="/blog/pcso-658-results-analysis" className="text-electric-400 hover:text-electric-300 underline">
+              6/58 results analysis
+            </Link>{' '}
+            and{' '}
+            <Link to="/blog/pcso-649-results-analysis" className="text-electric-400 hover:text-electric-300 underline">
+              6/49 results analysis
+            </Link>
+            .
           </p>
         </section>
       </article>
