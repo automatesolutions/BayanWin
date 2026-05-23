@@ -69,9 +69,9 @@ const POSTS = [
 
 function BlogIndex() {
   useEffect(() => {
-    document.title = 'BayanWin Blog — algorithms, film & lottery analytics';
+    document.title = 'Lottery Analytics Blog - Algorithmic PCSO Analysis Philippines | BayanWin';
     return () => {
-      document.title = 'BayanWin - PCSO results & AI driven predictions';
+      document.title = 'BayanWin - Algorithmic Lottery Prediction Philippines | PCSO Analysis';
     };
   }, []);
 

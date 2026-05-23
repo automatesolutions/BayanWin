@@ -139,6 +139,136 @@ function BlogDeepReinforcementLearning() {
           </p>
         </section>
 
+        <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="drl-bayanwin">
+          <h2 id="drl-bayanwin" className="text-xl font-semibold text-white">
+            Deep RL in BayanWin's lottery analysis
+          </h2>
+          <p>
+            In BayanWin, the Deep Reinforcement Learning model takes a different approach from purely statistical
+            methods. Instead of just looking at historical frequencies or sequence patterns, the DRL agent
+            incorporates <strong className="text-slate-200">feedback from its own prior predictions</strong>: each
+            time a draw result is recorded, the agent can observe how its previous output compared to the actual
+            outcome (the error distance) and adjust its internal strategy accordingly.
+          </p>
+          <p>
+            This makes the DRL model <strong className="text-slate-200">adaptive over time</strong> in a way that
+            a static XGBoost or Markov model is not. If a particular pattern of prediction errors persists — for
+            example, the model consistently over-represents certain number ranges — the feedback signal can push
+            the agent to rebalance its outputs in future draws. This kind of self-correction is one of the core
+            strengths of reinforcement learning as a paradigm.
+          </p>
+          <p>
+            However, it is critical to understand the limitation: even an adaptive model cannot overcome the
+            fundamental randomness of PCSO draws. The DRL agent learns from patterns in how its predictions
+            were wrong, but the draw itself is still a certified random process. What the agent improves is
+            its <em>internal consistency</em> and <em>pattern calibration</em>, not its ability to predict
+            genuinely random events.
+          </p>
+          <p>
+            Like all models on BayanWin, the DRL output is displayed alongside others in the Council Panel so
+            you can compare where it agrees with simpler statistical approaches and where it diverges — providing
+            richer context for exploration than any single model alone.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="drl-philippines">
+          <h2 id="drl-philippines" className="text-xl font-semibold text-white">
+            AI lottery analysis in the Philippines: context and limitations
+          </h2>
+          <p>
+            The application of machine learning and AI to Philippine lottery data (PCSO 6/42, 6/45, 6/49, 6/55,
+            and 6/58) is an active area of interest for data enthusiasts and students in the Philippines. BayanWin
+            is one of the few platforms that makes multiple algorithmic models transparent and accessible to
+            general users rather than keeping them behind a proprietary interface.
+          </p>
+          <p>
+            The key principle that guides BayanWin's design is <strong className="text-slate-200">honest
+            uncertainty</strong>. Every model output includes context about what the model is actually doing
+            (pattern analysis, not clairvoyance), links to methodology explanations, and a persistent
+            disclaimer that no guaranteed wins are promised. This is especially important in the Philippines
+            lottery context, where players — particularly those with limited disposable income — can be
+            vulnerable to misleading claims from systems that promise predictable outcomes.
+          </p>
+          <p>
+            Deep RL is a genuinely powerful paradigm in the right domains (games with clear rules and measurable
+            rewards, like chess or Go). Applied to lottery prediction, it is an interesting experiment that
+            can surface self-consistency improvements over time — but it operates within the hard ceiling of
+            genuine randomness. We present it as one voice in an ensemble, not as the authoritative answer.
+          </p>
+        </section>
+
+        <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="drl-faq">
+          <h2 id="drl-faq" className="text-xl font-semibold text-white">
+            FAQ: Deep Reinforcement Learning and lottery prediction
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-slate-200">
+                Can Deep RL guarantee lottery wins?
+              </h3>
+              <p className="text-slate-400 mt-1">
+                No. PCSO lottery draws are random by design. Deep RL can improve the internal consistency of
+                prediction outputs by learning from past errors, but it cannot predict a certified random event.
+                BayanWin makes no claims of guaranteed wins — these would be false and irresponsible.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-200">
+                How is Deep RL different from XGBoost or a Decision Tree?
+              </h3>
+              <p className="text-slate-400 mt-1">
+                XGBoost and Decision Trees are trained once on a static historical dataset and make predictions
+                based on that snapshot. Deep RL is designed to learn from ongoing feedback — specifically, from
+                comparing its predictions to actual draw outcomes over time. This makes it adaptive, but also
+                means it needs a reasonable volume of prediction-result pairs to accumulate meaningful learning
+                signals.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-200">
+                What is the "error distance" metric in BayanWin?
+              </h3>
+              <p className="text-slate-400 mt-1">
+                Error distance measures how far a model's prediction was from the actual draw result — for
+                example, how many numbers matched and how close the non-matching numbers were numerically.
+                This metric is used both to display model performance history in the dashboard and as a
+                feedback signal for the DRL agent's adaptive learning loop.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-200">
+                How does BayanWin show the DRL model's output?
+              </h3>
+              <p className="text-slate-400 mt-1">
+                After selecting a PCSO game on the{' '}
+                <Link to="/" className="text-electric-400 hover:text-electric-300 underline">homepage</Link>{' '}
+                and clicking the prediction button, the DRL model's candidate six-number line streams in
+                alongside the other five models. The Council Panel shows where models agree and disagree.
+                The Error Distance Analysis section shows how past predictions from each model compared with
+                actual draw outcomes.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-200">
+                What landmark achievements inspired the use of Deep RL?
+              </h3>
+              <p className="text-slate-400 mt-1">
+                DeepMind's DQN (2013) mastered Atari games from raw pixels; AlphaGo (2015) and AlphaZero
+                (2017) achieved superhuman performance in Go, chess, and shogi; OpenAI Five (2019) beat
+                Dota 2 world champions. These achievements demonstrated that Deep RL can discover
+                sophisticated strategies in complex rule-based environments — which inspired applying
+                similar adaptive learning principles to lottery history analysis.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <div className="rounded-lg bg-amber-950/25 border border-amber-500/20 px-4 py-3 text-xs text-amber-100/80">
+          <strong className="text-amber-200">Disclaimer:</strong> This article is for educational purposes only.
+          BayanWin is not affiliated with PCSO. Lottery outcomes are random; historical analysis does not predict
+          future results. No guaranteed wins exist. Play responsibly and within your means.
+        </div>
+
         <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">
           <h2 id="related-articles" className="text-lg font-semibold text-white">
             Related Articles

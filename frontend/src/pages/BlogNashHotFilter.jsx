@@ -15,14 +15,14 @@ function MediaAside() {
       <figure className="rounded-xl overflow-hidden border border-slate-600/60 bg-slate-900/80 p-2">
         <img src={gifSmart} alt="Animated tribute to A Beautiful Mind" className="w-full rounded-lg" />
         <figcaption className="text-[11px] text-slate-500 mt-2 px-1 leading-snug">
-          Visual beat: strategy, cooperation, and the “beautiful” tension of competing ideas in one mind.
+          Visual beat: strategy, cooperation, and the "beautiful" tension of competing ideas in one mind.
         </figcaption>
       </figure>
 
       <figure className="rounded-xl overflow-hidden border border-orange-500/25 bg-gradient-to-b from-slate-900 to-black p-2">
         <img src={gifDiamond} alt="Diamond hands meme animation" className="w-full rounded-lg" />
         <figcaption className="text-[11px] text-slate-500 mt-2 px-1 leading-snug">
-          Pop-culture shorthand for stubborn commitment—fun contrast with Nash’s mathematical notion of stable, mutual
+          Pop-culture shorthand for stubborn commitment—fun contrast with Nash's mathematical notion of stable, mutual
           best responses (equilibrium), not financial advice.
         </figcaption>
       </figure>
@@ -32,7 +32,7 @@ function MediaAside() {
 
 function BlogNashHotFilter() {
   useEffect(() => {
-    document.title = 'Blog: NashHotFilter & A Beautiful Mind | BayanWin';
+    document.title = 'NashHotFilter: Game Theory Lottery Analysis Philippines | BayanWin';
     return () => {};
   }, []);
 
@@ -56,17 +56,17 @@ function BlogNashHotFilter() {
             <p className="text-xs font-mono uppercase tracking-widest text-amber-400/90">Algorithms · Cinema · Game theory</p>
             <h1 className="text-3xl sm:text-4xl font-bold text-white">NashHotFilter and the spirit of <em>A Beautiful Mind</em></h1>
             <p className="text-slate-400 max-w-3xl">
-              BayanWin’s <strong className="text-slate-200">NashHotFilter</strong> borrows its name from ideas associated
+              BayanWin's <strong className="text-slate-200">NashHotFilter</strong> borrows its name from ideas associated
               with mathematician John Nash—especially <strong className="text-slate-200">equilibrium</strong> thinking in
-              game theory—then mixes those ideas with hot/cold number heuristics. This article walks through Ron Howard’s
+              game theory—then mixes those ideas with hot/cold number heuristics. This article walks through Ron Howard's
               2001 film as popular storytelling (not a documentary), then connects why that story matters to how we talk
-              about “balance” in prediction toys built on random draws.
+              about "balance" in prediction tools built on random draws.
             </p>
           </header>
 
           <div className="rounded-lg bg-amber-950/30 border border-amber-500/20 px-4 py-3 text-xs text-amber-100/90">
             <strong className="text-amber-200">Note:</strong> The following is a <strong>plot summary</strong> of{' '}
-            <em>A Beautiful Mind</em> (2001). It contains spoilers. The real John Nash’s life differed in important ways
+            <em>A Beautiful Mind</em> (2001). It contains spoilers. The real John Nash's life differed in important ways
             from the screenplay; see biographies and his Nobel lecture for scholarly detail.
           </div>
 
@@ -94,7 +94,7 @@ function BlogNashHotFilter() {
             <p>
               Determined to publish something truly original, Nash listens as his classmates debate how to approach a group
               of women at a bar. He argues that a <strong className="text-slate-200">cooperative approach</strong> could
-              improve everyone’s odds—a storytelling spark that, in the film, leads him toward a new notion of governing
+              improve everyone's odds—a storytelling spark that, in the film, leads him toward a new notion of governing
               dynamics.
             </p>
           </section>
@@ -125,8 +125,8 @@ function BlogNashHotFilter() {
             </h2>
             <p>
               Rosen explains to Alicia that Nash has <strong className="text-slate-200">schizophrenia</strong>—Charles,
-              Marcee (Charles’s niece), and Parcher are hallucinations. Alicia, Sol, and Bender comb his study, thick with
-              news clippings. She finds unopened “classified” packets from the drop point and confronts him with the truth.
+              Marcee (Charles's niece), and Parcher are hallucinations. Alicia, Sol, and Bender comb his study, thick with
+              news clippings. She finds unopened "classified" packets from the drop point and confronts him with the truth.
               Nash, shattered, tries to cut out the diode; there is nothing there. Insulin shock therapy follows, then
               release. Frustrated by medication side effects, he secretly stops treatment; Parcher returns, urging him back to
               a shed near home.
@@ -168,12 +168,94 @@ function BlogNashHotFilter() {
               The movie made Nash a household name for <strong className="text-slate-200">game theory</strong> and the
               image of a mind wrestling competing strategies at once. <strong className="text-slate-200">NashHotFilter</strong>{' '}
               in BayanWin is a nod to that cultural story: a hybrid heuristic that blends equilibrium-flavored balancing
-              ideas with “hot” (frequently drawn) number pressure—useful for exploration, not proof of a winning system.
+              ideas with "hot" (frequently drawn) number pressure—useful for exploration, not proof of a winning system.
+            </p>
+            <p>
+              More specifically, the NashHotFilter works by asking a question analogous to Nash equilibrium: given
+              the current hot-number landscape (which numbers have appeared more frequently recently), what is the
+              "stable" combination where no individual number preference would improve the overall balance of the
+              selection? The algorithm iterates toward this balanced point while still weighting toward historically
+              active numbers. The result is a six-number candidate line that is neither purely the most-frequent
+              numbers nor a random spread—it occupies a middle ground guided by both frequency signal and
+              equilibrium-style balance.
             </p>
             <p className="text-slate-500 text-xs">
               Lottery draws are legally random; past frequency does not create obligation for the next draw. Enjoy the
               models as experiments on history, not promises about the future.
             </p>
+          </section>
+
+          <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="sec-game-theory-context">
+            <h2 id="sec-game-theory-context" className="text-xl font-semibold text-white">
+              Game theory in the Philippines lottery context
+            </h2>
+            <p>
+              The Philippines lottery — managed by PCSO for games including 6/42, 6/45, 6/49, 6/55, and 6/58 — is
+              not a game in the game-theory sense: there is no strategic interaction between players. Each player
+              independently selects numbers, and the outcome is determined by a certified random draw, not by what
+              other players chose. So why apply game-theory-inspired thinking at all?
+            </p>
+            <p>
+              The answer is that <strong className="text-slate-200">equilibrium concepts are useful for balancing
+              competing objectives</strong> within a single decision process, even without strategic opponents.
+              When choosing six numbers from a pool of 42 to 58, a purely hot-number approach may cluster predictions
+              in a narrow range and miss broad coverage; a purely random approach ignores historical signal entirely.
+              NashHotFilter uses the equilibrium idea as a <em>balancing metaphor</em>: find the point where the
+              tension between "follow the hot numbers" and "maintain good spread" is resolved rather than dominated
+              by either extreme.
+            </p>
+            <p>
+              This is a creative application of mathematical thinking to an uncertain domain — genuinely interesting
+              as an exploratory tool, but always with the understanding that no balancing heuristic changes the
+              fundamental randomness of the next draw.
+            </p>
+          </section>
+
+          <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="sec-faq-nash">
+            <h2 id="sec-faq-nash" className="text-xl font-semibold text-white">
+              FAQ: NashHotFilter and game theory in lottery analysis
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-slate-200">Did John Nash actually work on lottery prediction?</h3>
+                <p className="text-slate-400 mt-1">
+                  No. John Nash's mathematical work was in game theory, specifically in proving the existence
+                  of equilibria in non-cooperative games (Nash equilibrium). His ideas have been applied broadly
+                  in economics, evolutionary biology, and computer science. BayanWin's NashHotFilter borrows
+                  the conceptual spirit of equilibrium — balancing competing forces — not any actual Nash
+                  work on lottery games.
+                </p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-200">Can the NashHotFilter predict winning PCSO numbers?</h3>
+                <p className="text-slate-400 mt-1">
+                  No. PCSO draws are random by design. NashHotFilter is an exploratory heuristic that produces
+                  balanced candidate lines based on historical frequency data. It is one of six models in
+                  BayanWin's ensemble — useful for exploration and comparison, but not a predictive system
+                  that can overcome genuine randomness.
+                </p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-200">How is NashHotFilter different from just picking the most frequent numbers?</h3>
+                <p className="text-slate-400 mt-1">
+                  A pure hot-number strategy would simply rank numbers by historical frequency and pick the
+                  top six. NashHotFilter adds a balancing constraint: the candidate line should be in a
+                  "stable" configuration where neither hot-number weighting nor spread coverage dominates
+                  completely. This produces lines that consider frequency without being entirely driven by it.
+                </p>
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-200">How did the film A Beautiful Mind influence modern views of game theory?</h3>
+                <p className="text-slate-400 mt-1">
+                  Ron Howard's 2001 film brought Nash equilibrium into popular consciousness far beyond academic
+                  economics. The bar scene (simplified for dramatic purposes) introduced millions of viewers to
+                  the idea that individual rational choices can lead to collectively suboptimal outcomes — a
+                  concept that resonates in fields from traffic management to political science. The film
+                  sparked widespread curiosity about game theory and is one reason the concept is recognizable
+                  outside universities today.
+                </p>
+              </div>
+            </div>
           </section>
 
           <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">

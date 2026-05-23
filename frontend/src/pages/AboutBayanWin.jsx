@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 function AboutBayanWin() {
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = 'About BayanWin — PCSO analytics, models & dashboards';
+    document.title = 'About BayanWin - AI Lottery Analytics for PCSO Philippines';
     return () => {
       document.title = prevTitle;
     };
