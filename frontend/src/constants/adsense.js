@@ -44,12 +44,14 @@ export function teardownAdSenseDom() {
 }
 
 /**
- * Paths where AdSense may load. Matches policy guidance: editorial / informational
- * pages only—not tool-heavy home or legal/contact-only pages.
+ * Paths where AdSense may load. Includes all content-rich editorial and informational
+ * pages. Homepage is included since it now has substantial publisher content.
  */
 export function isAdSenseAllowedPath(pathname) {
   if (!pathname) return false;
+  if (pathname === '/') return true;
   if (pathname === '/blog' || pathname.startsWith('/blog/')) return true;
   if (pathname === '/about' || pathname === '/methodology') return true;
+  if (pathname === '/responsible-play') return true;
   return false;
 }
