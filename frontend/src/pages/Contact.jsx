@@ -13,16 +13,16 @@ function Contact() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-2xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-2xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">Contact</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-6 py-8 text-slate-200 shadow-sm space-y-8">
+      <article className="article text-slate-200 space-y-8">
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Contact BayanWin</h1>
           <p className="text-slate-400 text-sm leading-relaxed">
@@ -38,7 +38,7 @@ function Contact() {
             <br />
             <a
               href={`mailto:${CONTACT_EMAIL}?subject=BayanWin%20inquiry`}
-              className="text-electric-400 hover:text-electric-300 underline break-all text-base"
+              className="link break-all text-base"
             >
               {CONTACT_EMAIL}
             </a>
@@ -67,7 +67,7 @@ function Contact() {
               <strong className="text-slate-200">Privacy requests</strong> — to exercise data rights under the
               Philippine Data Privacy Act of 2012, request data deletion, or ask about what information we process.
               See our{' '}
-              <Link to="/privacy" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/privacy" className="link">
                 Privacy Policy
               </Link>{' '}
               first.
@@ -142,15 +142,15 @@ function Contact() {
         </section>
 
         <div className="border-t border-slate-600/50 pt-4 text-sm">
-          <Link to="/privacy" className="text-electric-400 hover:text-electric-300 underline">
+          <Link to="/privacy" className="link">
             Privacy Policy
           </Link>
           <span className="text-slate-600 mx-2">·</span>
-          <Link to="/about" className="text-electric-400 hover:text-electric-300 underline">
+          <Link to="/about" className="link">
             About BayanWin
           </Link>
           <span className="text-slate-600 mx-2">·</span>
-          <Link to="/responsible-play" className="text-electric-400 hover:text-electric-300 underline">
+          <Link to="/responsible-play" className="link">
             Responsible Play
           </Link>
         </div>

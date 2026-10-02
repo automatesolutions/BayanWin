@@ -1,5 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
+import { TbAffiliate } from 'react-icons/tb';
+import CardHeader from './ui/CardHeader';
+import Notice from './ui/Notice';
 import { getCooccurrenceGraph } from '../services/api';
 
 /** Strongest pairs only + calmer styling so the force layout stays readable */
@@ -49,14 +52,14 @@ const CooccurrenceGraph = ({ gameType }) => {
         .attr('cy', '45%')
         .attr('r', '75%')
         .call((g) => {
-          g.append('stop').attr('offset', '0%').attr('stop-color', '#1a2332');
-          g.append('stop').attr('offset', '100%').attr('stop-color', '#121a24');
+          g.append('stop').attr('offset', '0%').attr('stop-color', '#141c28');
+          g.append('stop').attr('offset', '100%').attr('stop-color', '#0c1119');
         });
 
       svg.append('rect').attr('width', w).attr('height', h).attr('fill', 'url(#viz-bg-co)').attr('rx', 8);
 
       if (!edges.length) {
-        svg.append('text').attr('x', w / 2).attr('y', h / 2).attr('text-anchor', 'middle').attr('fill', '#64748b').text('No graph data');
+        svg.append('text').attr('x', w / 2).attr('y', h / 2).attr('text-anchor', 'middle').attr('fill', '#8D98A8').attr('font-size', 14).text('No pair data for this game yet');
         return;
       }
 
@@ -172,20 +175,31 @@ const CooccurrenceGraph = ({ gameType }) => {
   }, [gameType]);
 
   return (
-    <div className="rounded-xl border border-slate-600/40 bg-[#0f1419] p-4 shadow-lg shadow-black/20 ring-1 ring-white/5">
-      <h3 className="text-base font-semibold tracking-tight text-sky-300/95 mb-1">Co-occurrence</h3>
-      <p className="text-[11px] leading-relaxed text-slate-400 mb-3">
-        Strongest pairs in one draw (top {DISPLAY_EDGE_CAP} links for clarity).
-        {meta && (
-          <span className="text-slate-500">
-            {' '}
-            — {meta.edge_count} available, {meta.draws_used} draws sampled.
-          </span>
-        )}
-      </p>
-      {error && <p className="text-red-400/90 text-sm mb-2">{String(error)}</p>}
-      <div ref={ref} className="w-full min-h-[460px] rounded-lg overflow-hidden" />
-    </div>
+    <section className="card">
+      <CardHeader
+        icon={TbAffiliate}
+        title="Numbers drawn together"
+        description={
+          <>
+            Pairs of numbers that often come up in the same draw. Thicker lines mean more often. Showing the
+            top {DISPLAY_EDGE_CAP} pairs.
+            {meta && (
+              <span className="text-silver-500">
+                {' '}
+                ({meta.edge_count} pairs found across {meta.draws_used} draws.)
+              </span>
+            )}
+          </>
+        }
+      />
+      {error && (
+        <Notice tone="error" title="Graph didn't load" className="mb-4">
+          {String(error)}
+        </Notice>
+      )}
+      <div ref={ref} className="min-h-[460px] w-full overflow-hidden rounded-xl border border-white/[0.05]" />
+      <p className="mt-2 text-xs text-silver-500">Drag a node to move it.</p>
+    </section>
   );
 };
 

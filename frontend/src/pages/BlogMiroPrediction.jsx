@@ -62,23 +62,22 @@ function BlogMiroPrediction() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-6xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-6xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
-        <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
+        <span aria-hidden className="text-silver-700">/</span>
+        <Link to="/blog" className="link">
           Blog
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">Miro prediction</span>
       </nav>
 
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] lg:gap-10 xl:gap-12">
-        <article className="min-w-0 space-y-8 text-slate-300 text-sm leading-relaxed">
-          <header className="border-l-4 border-cyan-400 pl-5 space-y-3">
-            <p className="text-xs font-mono uppercase tracking-widest text-cyan-400/90">LLM synthesis · Swarm metaphors · 2026 buzz</p>
+        <article className="article min-w-0 space-y-8 text-slate-300">
+          <header className="space-y-3">
             <h1 className="text-3xl sm:text-4xl font-bold text-white">
               Miro prediction: BayanWin’s <em>Miro</em> and the MiroFish idea
             </h1>

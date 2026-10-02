@@ -37,23 +37,22 @@ function BlogNashHotFilter() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-6xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-6xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
-        <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
+        <span aria-hidden className="text-silver-700">/</span>
+        <Link to="/blog" className="link">
           Blog
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">NashHotFilter</span>
       </nav>
 
       <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] lg:gap-10 xl:gap-12">
-        <article className="min-w-0 space-y-10 text-slate-300 text-sm leading-relaxed">
-          <header className="border-l-4 border-amber-500 pl-5 space-y-3">
-            <p className="text-xs font-mono uppercase tracking-widest text-amber-400/90">Algorithms · Cinema · Game theory</p>
+        <article className="article min-w-0 space-y-10 text-slate-300">
+          <header className="space-y-3">
             <h1 className="text-3xl sm:text-4xl font-bold text-white">NashHotFilter and the spirit of <em>A Beautiful Mind</em></h1>
             <p className="text-slate-400 max-w-3xl">
               BayanWin's <strong className="text-slate-200">NashHotFilter</strong> borrows its name from ideas associated

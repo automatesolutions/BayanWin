@@ -1,6 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { TbListNumbers, TbRefresh } from 'react-icons/tb';
 import { getResults, scrapeData } from '../services/api';
 import NumberBall from './NumberBall';
+import CardHeader from './ui/CardHeader';
+import EmptyState from './ui/EmptyState';
+import Notice from './ui/Notice';
+import Spinner from './ui/Spinner';
 import { formatDate, formatCurrency } from '../utils/formatters';
 
 /** Single lightweight fetch: most recent draws only (no full history / pagination). */
@@ -9,12 +14,18 @@ const LATEST_COUNT = 5;
 /** Background incremental pull from Google Sheet → DB; keeps UI fresh without manual clicks. */
 const AUTO_SHEET_SYNC_MS = 90 * 1000;
 
+const errorText = (error) => {
+  const detail = error.response?.data?.detail;
+  return typeof detail === 'string' ? detail : error.response?.data?.message || error.message;
+};
+
 const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(false);
   const [quickSyncing, setQuickSyncing] = useState(false);
   const [fullSyncing, setFullSyncing] = useState(false);
   const [backgroundSyncing, setBackgroundSyncing] = useState(false);
+  const [syncError, setSyncError] = useState(null);
   const busyRef = useRef(false);
   const onSheetSyncedRef = useRef(onSheetSynced);
   onSheetSyncedRef.current = onSheetSynced;
@@ -55,17 +66,16 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
       setBackgroundSyncing(true);
     } else {
       setQuickSyncing(true);
+      setSyncError(null);
     }
     try {
       await scrapeData({ game_type: gameType, full_sync: false });
       onSheetSyncedRef.current?.();
     } catch (error) {
-      const detail = error.response?.data?.detail;
-      const msg =
-        typeof detail === 'string' ? detail : error.response?.data?.message || error.message;
+      const msg = errorText(error);
       console.error('Sheet sync failed:', msg);
       if (!opts.silent) {
-        window.alert(`Could not update from Google Sheet.\n\n${msg}`);
+        setSyncError(`Couldn't check for new draws. ${msg}`);
       }
     } finally {
       busyRef.current = false;
@@ -82,15 +92,14 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setFullSyncing(true);
+    setSyncError(null);
     try {
       await scrapeData({ game_type: gameType, full_sync: true });
       onSheetSyncedRef.current?.();
     } catch (error) {
-      const detail = error.response?.data?.detail;
-      const msg =
-        typeof detail === 'string' ? detail : error.response?.data?.message || error.message;
+      const msg = errorText(error);
       console.error('Full sheet sync failed:', msg);
-      window.alert(`Could not run full sheet sync.\n\n${msg}`);
+      setSyncError(`Full re-sync didn't finish. ${msg}`);
     } finally {
       busyRef.current = false;
       setFullSyncing(false);
@@ -134,84 +143,104 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
     return null;
   }
 
+  const busy = loading || quickSyncing || fullSyncing || backgroundSyncing;
+
   return (
-    <div className="bg-charcoal-800 rounded-xl shadow-tech-lg p-6 border-2 border-electric-500/30">
-      <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
-        <h2 className="text-xl font-bold text-electric-400 flex items-center">
-          <span className="w-1 h-8 bg-electric-500 rounded-full mr-3 tech-glow"></span>
-          Latest results
-        </h2>
-        <div className="flex flex-wrap items-center gap-2 justify-end">
-          {backgroundSyncing && (
-            <span className="text-[10px] text-silver-500 whitespace-nowrap" aria-live="polite">
-              Auto-sync…
-            </span>
-          )}
-          <button
-            type="button"
-            onClick={() => runIncrementalScrape({ silent: false })}
-            disabled={loading || quickSyncing || fullSyncing || backgroundSyncing}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-electric-600/30 border border-electric-400/60 text-electric-200 hover:bg-electric-600/45 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {quickSyncing ? 'Updating…' : 'Update from sheet'}
-          </button>
-          <button
-            type="button"
-            onClick={handleFullSheetSync}
-            disabled={loading || quickSyncing || fullSyncing || backgroundSyncing}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-silver-600 text-silver-300 hover:bg-charcoal-700/80 disabled:opacity-50 disabled:cursor-not-allowed"
-            title="Re-reads the entire Google Sheet. Use only if a normal update did not show new rows."
-          >
-            {fullSyncing ? 'Full sync…' : 'Full re-sync'}
-          </button>
-        </div>
-      </div>
-      <p className="text-xs text-silver-500 mb-4 ml-4 max-w-3xl leading-relaxed">
-        This list comes from the app database (not the live sheet). The server pulls your Google Sheet
-        in the background about every 90s while this page is open, and when you return to this tab.
-        Use <strong>Update from sheet</strong> for a fast check; use <strong>Full re-sync</strong> only
-        if new rows still do not show (re-reads the whole sheet and is slower).
-      </p>
+    <section className="card" aria-busy={loading}>
+      <CardHeader
+        icon={TbListNumbers}
+        title="Latest results"
+        description="The 5 most recent official draws. New results sync on their own every 90 seconds while this page is open."
+        actions={
+          <>
+            {backgroundSyncing && (
+              <span className="inline-flex items-center gap-1.5 text-xs text-silver-500" aria-live="polite">
+                <Spinner className="h-3 w-3" label="Syncing" /> Syncing
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => runIncrementalScrape({ silent: false })}
+              disabled={busy}
+              className="btn-secondary btn-sm"
+            >
+              <TbRefresh className={quickSyncing ? 'animate-spin' : ''} aria-hidden />
+              {quickSyncing ? 'Checking…' : 'Check for new draws'}
+            </button>
+            <button
+              type="button"
+              onClick={handleFullSheetSync}
+              disabled={busy}
+              className="btn-ghost btn-sm"
+              title="Re-reads the whole source sheet. Slower. Use only if a normal check misses new rows."
+            >
+              {fullSyncing ? 'Re-syncing…' : 'Full re-sync'}
+            </button>
+          </>
+        }
+      />
+
+      {syncError && (
+        <Notice tone="error" title="Sync failed" onDismiss={() => setSyncError(null)} className="mb-4">
+          {syncError}
+        </Notice>
+      )}
 
       {loading ? (
-        <div className="text-center py-6">
-          <div className="animate-spin rounded-full h-7 w-7 border-b-2 border-electric-500 mx-auto"></div>
+        <div className="space-y-3" aria-hidden>
+          {Array.from({ length: LATEST_COUNT }).map((_, i) => (
+            <div key={i} className="skeleton h-12 rounded-lg" />
+          ))}
         </div>
       ) : results.length === 0 ? (
-        <p className="text-silver-300 text-center py-6">No results available</p>
+        <EmptyState
+          icon={TbListNumbers}
+          title="No draws loaded yet"
+          compact
+          action={
+            <button
+              type="button"
+              onClick={() => runIncrementalScrape({ silent: false })}
+              disabled={busy}
+              className="btn-secondary btn-sm"
+            >
+              <TbRefresh aria-hidden /> Check for new draws
+            </button>
+          }
+        >
+          The first sync can take a few seconds. Check again, or come back shortly.
+        </EmptyState>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-silver-600/30">
-            <thead className="bg-gradient-to-r from-electric-900/50 to-charcoal-700">
+        <div className="-mx-5 overflow-x-auto px-5 sm:-mx-6 sm:px-6">
+          <table className="data-table">
+            <thead>
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-bold text-electric-300 uppercase tracking-wider">Date</th>
-                <th className="px-3 py-2 text-left text-xs font-bold text-electric-300 uppercase tracking-wider">Draw #</th>
-                <th className="px-3 py-2 text-left text-xs font-bold text-electric-300 uppercase tracking-wider">Numbers</th>
-                <th className="px-3 py-2 text-left text-xs font-bold text-electric-300 uppercase tracking-wider">Jackpot</th>
-                <th className="px-3 py-2 text-left text-xs font-bold text-electric-300 uppercase tracking-wider">Winners</th>
+                <th scope="col">Date</th>
+                <th scope="col">Draw</th>
+                <th scope="col">Numbers</th>
+                <th scope="col" className="text-right">Jackpot</th>
+                <th scope="col" className="text-right">Winners</th>
               </tr>
             </thead>
-            <tbody className="bg-charcoal-700/30 divide-y divide-silver-600/20">
+            <tbody>
               {results.map((result) => (
-                <tr key={result.id} className="hover:bg-electric-900/20 transition-colors">
-                  <td className="px-3 py-2 text-sm text-silver-200 font-medium">{formatDate(result.draw_date)}</td>
-                  <td className="px-3 py-2 text-sm text-silver-200 font-mono">{result.draw_number || 'N/A'}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap gap-1">
-                      {result.numbers && result.numbers.length > 0 ? (
-                        result.numbers.map((num, idx) => (
-                          <NumberBall key={idx} number={num} size="sm" />
-                        ))
+                <tr key={result.id}>
+                  <td className="whitespace-nowrap font-medium">{formatDate(result.draw_date)}</td>
+                  <td className="font-mono text-silver-400">{result.draw_number || '—'}</td>
+                  <td>
+                    <div className="flex min-w-[17rem] flex-wrap gap-1">
+                      {result.numbers?.length > 0 ? (
+                        result.numbers.map((num, idx) => <NumberBall key={idx} number={num} size="sm" />)
                       ) : (
-                        <span className="text-silver-400 text-sm">No numbers</span>
+                        <span className="text-silver-500">—</span>
                       )}
                     </div>
                   </td>
-                  <td className="px-3 py-2 text-sm text-orange-300 font-semibold">
-                    {result.jackpot ? formatCurrency(result.jackpot) : 'N/A'}
+                  <td className="whitespace-nowrap text-right font-mono font-semibold text-orange-300 tabular">
+                    {result.jackpot ? formatCurrency(result.jackpot) : '—'}
                   </td>
-                  <td className="px-3 py-2 text-sm text-silver-200">
-                    {result.winners !== null && result.winners !== undefined ? result.winners : 'N/A'}
+                  <td className="text-right font-mono tabular">
+                    {result.winners !== null && result.winners !== undefined ? result.winners : '—'}
                   </td>
                 </tr>
               ))}
@@ -219,7 +248,7 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
           </table>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 

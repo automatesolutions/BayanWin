@@ -11,16 +11,16 @@ function ResponsiblePlay() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-4xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-4xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">Responsible Play</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-8">
+      <article className="article text-slate-200 space-y-8">
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Responsible Play</h1>
           <p className="text-slate-400 text-sm leading-relaxed max-w-3xl">
@@ -212,7 +212,7 @@ function ResponsiblePlay() {
                   href="https://www.doh.gov.ph"
                   target="_blank"
                   rel="noreferrer"
-                  className="text-electric-400 hover:text-electric-300 underline"
+                  className="link"
                 >
                   Department of Health (DOH)
                 </a>{' '}
@@ -234,7 +234,7 @@ function ResponsiblePlay() {
           <h2 className="text-xl font-semibold text-white">Need help or have questions?</h2>
           <p>
             If you have concerns about this platform, the data we show, or responsible use, visit our{' '}
-            <Link to="/contact" className="text-electric-400 hover:text-electric-300 underline">
+            <Link to="/contact" className="link">
               Contact
             </Link>{' '}
             page. For privacy concerns in the Philippines, you may also reach the National Privacy Commission at{' '}
@@ -242,7 +242,7 @@ function ResponsiblePlay() {
               href="https://privacy.gov.ph"
               target="_blank"
               rel="noreferrer"
-              className="text-electric-400 hover:text-electric-300 underline"
+              className="link"
             >
               privacy.gov.ph
             </a>

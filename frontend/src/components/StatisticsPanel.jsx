@@ -1,191 +1,178 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { TbChartBar, TbClockHour4, TbFlame, TbRefresh, TbSnowflake } from 'react-icons/tb';
 import { getStatistics } from '../services/api';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import CardHeader from './ui/CardHeader';
+import EmptyState from './ui/EmptyState';
+import { CHART, tooltipStyle, gridProps, axisProps } from '../utils/chartTheme';
+
+const TABS = [
+  ['frequency', 'Frequency'],
+  ['general', 'Overview'],
+];
+
+const FrequencyChart = ({ data, color }) => (
+  <ResponsiveContainer width="100%" height={240}>
+    <BarChart data={data} margin={{ top: 8, right: 4, left: -16, bottom: 0 }}>
+      <CartesianGrid {...gridProps} />
+      <XAxis dataKey="number" {...axisProps} interval={0} />
+      <YAxis {...axisProps} allowDecimals={false} />
+      <Tooltip {...tooltipStyle} formatter={(v) => [v, 'Times drawn']} labelFormatter={(l) => `Number ${l}`} />
+      <Bar dataKey="frequency" fill={color} radius={[4, 4, 0, 0]} maxBarSize={28} />
+    </BarChart>
+  </ResponsiveContainer>
+);
+
+const SubHeading = ({ icon: Icon, children, iconClass }) => (
+  <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-white">
+    <Icon className={`h-4 w-4 ${iconClass}`} aria-hidden />
+    {children}
+  </h3>
+);
 
 const StatisticsPanel = ({ gameType }) => {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('frequency');
 
-  useEffect(() => {
-    if (gameType) {
-      fetchStatistics();
-    }
-  }, [gameType]);
-
-  const fetchStatistics = async () => {
+  const fetchStatistics = useCallback(async () => {
     setLoading(true);
     try {
       const response = await getStatistics(gameType);
       setStats(response.data);
     } catch (error) {
       console.error('Error fetching statistics:', error);
+      setStats(null);
     } finally {
       setLoading(false);
     }
-  };
+  }, [gameType]);
 
-  if (!gameType) {
-    return null;
-  }
+  useEffect(() => {
+    if (gameType) fetchStatistics();
+  }, [gameType, fetchStatistics]);
+
+  if (!gameType) return null;
+
+  const header = (
+    <CardHeader
+      icon={TbChartBar}
+      title="Number statistics"
+      description="How often each number has come up across the full draw history."
+    />
+  );
 
   if (loading) {
     return (
-      <div className="bg-charcoal-800 rounded-xl shadow-tech-lg p-6 border-2 border-electric-500/30">
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-electric-500 mx-auto"></div>
-        </div>
-      </div>
+      <section className="card" aria-busy="true">
+        {header}
+        <div className="skeleton h-10 rounded-xl" />
+        <div className="skeleton mt-5 h-60 rounded-xl" />
+      </section>
     );
   }
 
   if (!stats) {
     return (
-      <div className="bg-charcoal-800 rounded-xl shadow-tech-lg p-6 border-2 border-electric-500/30">
-        <p className="text-silver-300">No statistics available</p>
-      </div>
+      <section className="card">
+        {header}
+        <EmptyState
+          icon={TbChartBar}
+          title="Statistics didn't load"
+          action={
+            <button type="button" onClick={fetchStatistics} className="btn-secondary btn-sm">
+              <TbRefresh aria-hidden /> Try again
+            </button>
+          }
+        >
+          The server didn't respond. This is usually temporary.
+        </EmptyState>
+      </section>
     );
   }
 
-  const hotNumbersData = stats.hot_numbers?.slice(0, 15).map(item => ({
-    number: item.number,
-    frequency: item.frequency
-  })) || [];
-
-  const coldNumbersData = stats.cold_numbers?.slice(0, 15).map(item => ({
-    number: item.number,
-    frequency: item.frequency
-  })) || [];
+  const toChart = (list) => list?.slice(0, 15).map(({ number, frequency }) => ({ number, frequency })) || [];
+  const hotNumbersData = toChart(stats.hot_numbers);
+  const coldNumbersData = toChart(stats.cold_numbers);
 
   return (
-    <div className="bg-charcoal-800 rounded-xl shadow-tech-lg p-6 border-2 border-electric-500/30">
-      <h2 className="text-xl font-bold text-electric-400 mb-4 flex items-center">
-        <span className="w-1 h-8 bg-electric-500 rounded-full mr-3 tech-glow"></span>
-        Statistics & Analytics
-      </h2>
-      
-      <div className="border-b-2 border-silver-600/30 mb-4">
-        <nav className="flex space-x-4">
+    <section className="card">
+      {header}
+
+      <div role="tablist" aria-label="Statistics view" className="tabs">
+        {TABS.map(([id, label]) => (
           <button
-            onClick={() => setActiveTab('frequency')}
-            className={`py-2 px-4 border-b-2 font-semibold transition-colors ${
-              activeTab === 'frequency'
-                ? 'border-electric-500 text-electric-300'
-                : 'border-transparent text-silver-400 hover:text-electric-300'
-            }`}
+            key={id}
+            type="button"
+            role="tab"
+            id={`stats-tab-${id}`}
+            aria-selected={activeTab === id}
+            aria-controls={`stats-panel-${id}`}
+            onClick={() => setActiveTab(id)}
+            className="tab"
           >
-            Frequency Analysis
+            {label}
           </button>
-          <button
-            onClick={() => setActiveTab('general')}
-            className={`py-2 px-4 border-b-2 font-semibold transition-colors ${
-              activeTab === 'general'
-                ? 'border-electric-500 text-electric-300'
-                : 'border-transparent text-silver-400 hover:text-electric-300'
-            }`}
-          >
-            General Statistics
-          </button>
-        </nav>
+        ))}
       </div>
 
       {activeTab === 'frequency' && (
-        <div className="space-y-6">
+        <div role="tabpanel" id="stats-panel-frequency" aria-labelledby="stats-tab-frequency" className="space-y-8">
           <div>
-            <h3 className="text-lg font-semibold text-electric-300 mb-3 flex items-center">
-              <span className="text-orange-500 mr-2">🔥</span>
-              Hot Numbers (Most Frequent)
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={hotNumbersData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#BDC3C7" opacity={0.3} />
-                <XAxis dataKey="number" stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                <YAxis stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#2C3E50', 
-                    border: '2px solid #3498DB',
-                    borderRadius: '8px',
-                    color: '#ECF0F1'
-                  }} 
-                />
-                <Legend wrapperStyle={{ color: '#BDC3C7' }} />
-                <Bar dataKey="frequency" fill="#E67E22" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <SubHeading icon={TbFlame} iconClass="text-orange-400">Hot numbers · drawn most often</SubHeading>
+            <FrequencyChart data={hotNumbersData} color={CHART.accent} />
           </div>
 
           <div>
-            <h3 className="text-lg font-semibold text-electric-300 mb-3 flex items-center">
-              <span className="text-electric-500 mr-2">❄️</span>
-              Cold Numbers (Least Frequent)
-            </h3>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={coldNumbersData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#BDC3C7" opacity={0.3} />
-                <XAxis dataKey="number" stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                <YAxis stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#2C3E50', 
-                    border: '2px solid #3498DB',
-                    borderRadius: '8px',
-                    color: '#ECF0F1'
-                  }} 
-                />
-                <Legend wrapperStyle={{ color: '#BDC3C7' }} />
-                <Bar dataKey="frequency" fill="#3498DB" radius={[8, 8, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            <SubHeading icon={TbSnowflake} iconClass="text-electric-400">Cold numbers · drawn least often</SubHeading>
+            <FrequencyChart data={coldNumbersData} color={CHART.primary} />
           </div>
 
-          {stats.overdue_numbers && stats.overdue_numbers.length > 0 && (
+          {stats.overdue_numbers?.length > 0 && (
             <div>
-              <h3 className="text-lg font-semibold text-electric-300 mb-3 flex items-center">
-                <span className="text-silver-400 mr-2">⏰</span>
-                Overdue Numbers
-              </h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              <SubHeading icon={TbClockHour4} iconClass="text-silver-400">Overdue · longest since last drawn</SubHeading>
+              <ul className="grid grid-cols-3 gap-2 sm:grid-cols-4 xl:grid-cols-5">
                 {stats.overdue_numbers.slice(0, 20).map((item) => (
-                  <div key={item.number} className="p-3 bg-gradient-to-br from-charcoal-700 to-charcoal-600 rounded-lg text-center border border-silver-600/30 hover:border-electric-400 transition-colors">
-                    <div className="font-bold text-electric-300 text-lg">{item.number}</div>
-                    <div className="text-xs text-silver-400 mt-1">{item.days_since} days</div>
-                  </div>
+                  <li key={item.number} className="card-inset p-3 text-center">
+                    <div className="font-mono text-lg font-semibold text-white tabular">{item.number}</div>
+                    <div className="mt-0.5 text-2xs text-silver-500 tabular">{item.days_since} days</div>
+                  </li>
                 ))}
-              </div>
+              </ul>
             </div>
           )}
         </div>
       )}
 
       {activeTab === 'general' && (
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="p-5 bg-gradient-to-br from-electric-900/50 to-charcoal-700 rounded-xl border border-electric-500/30">
-              <div className="text-sm text-silver-300 font-medium mb-2">Total Draws</div>
-              <div className="text-3xl font-bold text-electric-400">{stats.total_draws || 0}</div>
+        <div role="tabpanel" id="stats-panel-general" aria-labelledby="stats-tab-general">
+          <dl className="grid grid-cols-2 gap-3">
+            <div className="card-inset">
+              <dt className="text-sm text-silver-400">Total draws</dt>
+              <dd className="mt-1 font-mono text-3xl font-semibold text-white tabular">
+                {(stats.total_draws || 0).toLocaleString('en-US')}
+              </dd>
             </div>
-            <div className="p-5 bg-gradient-to-br from-orange-900/50 to-charcoal-700 rounded-xl border border-orange-500/30">
-              <div className="text-sm text-silver-300 font-medium mb-2">Average Jackpot</div>
-              <div className="text-3xl font-bold text-orange-400">
-                {stats.average_jackpot ? `₱${(stats.average_jackpot / 1000000).toFixed(1)}M` : 'N/A'}
+            <div className="card-inset">
+              <dt className="text-sm text-silver-400">Average jackpot</dt>
+              <dd className="mt-1 font-mono text-3xl font-semibold text-orange-300 tabular">
+                {stats.average_jackpot ? `₱${(stats.average_jackpot / 1000000).toFixed(1)}M` : '—'}
+              </dd>
+            </div>
+            {stats.date_range && (
+              <div className="card-inset col-span-2">
+                <dt className="text-sm text-silver-400">Date range</dt>
+                <dd className="mt-1 font-medium text-white">
+                  {new Date(stats.date_range.start).toLocaleDateString()} –{' '}
+                  {new Date(stats.date_range.end).toLocaleDateString()}
+                </dd>
               </div>
-            </div>
-          </div>
-
-          {stats.date_range && (
-            <div className="p-5 bg-gradient-to-br from-charcoal-700 to-charcoal-600 rounded-xl border border-silver-600/30">
-              <div className="text-sm text-silver-300 mb-2 font-medium">Date Range</div>
-              <div className="text-electric-300 font-semibold">
-                {new Date(stats.date_range.start).toLocaleDateString()} - {new Date(stats.date_range.end).toLocaleDateString()}
-              </div>
-            </div>
-          )}
+            )}
+          </dl>
         </div>
       )}
-    </div>
+    </section>
   );
 };
 
 export default StatisticsPanel;
-

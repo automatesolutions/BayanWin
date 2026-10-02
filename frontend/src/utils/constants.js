@@ -1,6 +1,7 @@
 export const GAMES = {
   ultra_lotto_6_58: {
     id: 'ultra_lotto_6_58',
+    drawDays: [2, 5, 0], // 0 = Sunday. PCSO draws at 9:00 PM Manila time.
     name: 'Ultra Lotto 6/58',
     minNumber: 1,
     maxNumber: 58,
@@ -8,6 +9,7 @@ export const GAMES = {
   },
   grand_lotto_6_55: {
     id: 'grand_lotto_6_55',
+    drawDays: [1, 3, 6], // 0 = Sunday. PCSO draws at 9:00 PM Manila time.
     name: 'Grand Lotto 6/55',
     minNumber: 1,
     maxNumber: 55,
@@ -15,6 +17,7 @@ export const GAMES = {
   },
   super_lotto_6_49: {
     id: 'super_lotto_6_49',
+    drawDays: [2, 4, 0], // 0 = Sunday. PCSO draws at 9:00 PM Manila time.
     name: 'Super Lotto 6/49',
     minNumber: 1,
     maxNumber: 49,
@@ -22,6 +25,7 @@ export const GAMES = {
   },
   mega_lotto_6_45: {
     id: 'mega_lotto_6_45',
+    drawDays: [1, 3, 5], // 0 = Sunday. PCSO draws at 9:00 PM Manila time.
     name: 'Mega Lotto 6/45',
     minNumber: 1,
     maxNumber: 45,
@@ -29,12 +33,18 @@ export const GAMES = {
   },
   lotto_6_42: {
     id: 'lotto_6_42',
+    drawDays: [2, 4, 6], // 0 = Sunday. PCSO draws at 9:00 PM Manila time.
     name: 'Lotto 6/42',
     minNumber: 1,
     maxNumber: 42,
     numbersCount: 6
   }
 };
+
+/** Games in ascending size, the order players scan them in. */
+export const GAME_ORDER = ['lotto_6_42', 'mega_lotto_6_45', 'super_lotto_6_49', 'grand_lotto_6_55', 'ultra_lotto_6_58'];
+
+export const DRAW_HOUR_MANILA = 21;
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
