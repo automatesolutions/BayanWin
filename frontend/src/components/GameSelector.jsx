@@ -1,50 +1,95 @@
 import React from 'react';
+import { TbBolt, TbCheck } from 'react-icons/tb';
 import { GAMES } from '../utils/constants';
+import Spinner from './ui/Spinner';
 
-const GameSelector = ({ selectedGame, onGameSelect, onGeneratePredictions }) => {
+/** Number of possible 6-number tickets: C(n, k). */
+const combinations = (n, k) => {
+  let r = 1;
+  for (let i = 1; i <= k; i += 1) r = (r * (n - k + i)) / i;
+  return Math.round(r);
+};
+
+const GameSelector = ({ selectedGame, onGameSelect, onGeneratePredictions, loading = false }) => {
   const gameList = Object.values(GAMES);
+  const selected = selectedGame ? GAMES[selectedGame] : null;
 
   return (
-    <div className="bg-charcoal-800 rounded-xl shadow-tech-lg p-6 mb-6 border-2 border-electric-500/30">
-      <h2 className="text-2xl font-bold text-electric-400 mb-6 flex items-center">
-        <span className="w-1 h-8 bg-electric-500 rounded-full mr-3 tech-glow"></span>
-        Select Game
-      </h2>
-      
-      <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
-        {gameList.map((game) => (
-          <button
-            key={game.id}
-            onClick={() => onGameSelect(game.id)}
-            className={`p-4 rounded-xl border-2 transition-all transform hover:scale-105 ${
-              selectedGame === game.id
-                ? 'border-electric-500 bg-gradient-to-br from-electric-900/50 to-electric-800/30 text-electric-300 shadow-electric'
-                : 'border-silver-600/50 hover:border-electric-400 bg-charcoal-700/50 hover:bg-charcoal-700 text-silver-300'
-            }`}
-          >
-            <div className="font-bold text-lg">{game.name}</div>
-            <div className={`text-xs mt-2 font-medium ${
-              selectedGame === game.id ? 'text-electric-400' : 'text-silver-400'
-            }`}>
-              Pick {game.numbersCount} from {game.maxNumber}
-            </div>
-          </button>
-        ))}
+    <div className="card">
+      <div className="mb-5 space-y-1">
+        <h2 className="card-title">1. Pick a game</h2>
+        <p className="text-sm text-silver-400">
+          Results, charts, and model runs all use the game you pick.
+        </p>
       </div>
 
-      {selectedGame && (
-        <div className="space-y-3">
-          <button
-            onClick={onGeneratePredictions}
-            className="w-full bg-orange-gradient hover:bg-orange-600 text-white font-bold py-4 px-6 rounded-xl shadow-orange hover:shadow-tech-lg transition-all transform hover:scale-[1.02] text-lg border-2 border-orange-400/50"
-          >
-            ⚡ Generate Predictions
-          </button>
+      <div
+        role="radiogroup"
+        aria-label="PCSO game"
+        className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5"
+      >
+        {gameList.map((game) => {
+          const active = selectedGame === game.id;
+          return (
+            <button
+              key={game.id}
+              type="button"
+              role="radio"
+              aria-checked={active}
+              onClick={() => onGameSelect(game.id)}
+              className={`group relative flex min-h-[88px] flex-col items-start justify-between rounded-xl border p-4 text-left transition-colors ${
+                active
+                  ? 'border-electric-400/70 bg-electric-500/[0.12] ring-1 ring-inset ring-electric-400/40'
+                  : 'border-white/[0.08] bg-charcoal-700/60 hover:border-white/20 hover:bg-charcoal-600/70'
+              }`}
+            >
+              <span className="flex w-full items-start justify-between gap-2">
+                <span className="font-mono text-xl font-semibold text-white tabular">
+                  6/{game.maxNumber}
+                </span>
+                <span
+                  className={`inline-flex h-5 w-5 items-center justify-center rounded-full border transition-colors ${
+                    active ? 'border-electric-400 bg-electric-400 text-charcoal-950' : 'border-white/20'
+                  }`}
+                  aria-hidden
+                >
+                  {active && <TbCheck className="h-3.5 w-3.5" />}
+                </span>
+              </span>
+              <span className="mt-2 block">
+                <span className={`block text-sm font-medium ${active ? 'text-white' : 'text-silver-200'}`}>
+                  {game.name.replace(/\s*6\/\d+$/, '')}
+                </span>
+                <span className="block text-2xs text-silver-500 tabular">
+                  1 in {combinations(game.maxNumber, game.numbersCount).toLocaleString('en-US')}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-6 flex flex-col gap-3 border-t border-white/[0.06] pt-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="space-y-0.5">
+          <p className="card-title text-base">2. Run the models</p>
+          <p className="text-sm text-silver-400">
+            {selected
+              ? `Runs all 7 models on ${selected.name} history. Results appear as each one finishes.`
+              : 'Pick a game first.'}
+          </p>
         </div>
-      )}
+        <button
+          type="button"
+          onClick={onGeneratePredictions}
+          disabled={!selectedGame || loading}
+          className="btn-primary btn-lg w-full sm:w-auto"
+        >
+          {loading ? <Spinner className="h-4 w-4" label="Running models" /> : <TbBolt aria-hidden />}
+          {loading ? 'Running models…' : 'Run all 7 models'}
+        </button>
+      </div>
     </div>
   );
 };
 
 export default GameSelector;
-

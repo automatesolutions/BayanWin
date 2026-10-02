@@ -1,6 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { getPredictionAccuracy, getGaussianDistribution, autoCalculateAccuracy } from '../services/api';
-import { LineChart, Line, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { LineChart, Line, BarChart, Bar, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ComposedChart } from 'recharts';
+import { TbCalculator, TbChartLine } from 'react-icons/tb';
+import CardHeader from './ui/CardHeader';
+import EmptyState from './ui/EmptyState';
+import Notice from './ui/Notice';
+import Spinner from './ui/Spinner';
+import { CHART, tooltipStyle, legendStyle, gridProps, axisProps } from '../utils/chartTheme';
 
 const ErrorDistanceAnalysis = ({ gameType }) => {
   const [accuracyData, setAccuracyData] = useState([]);
@@ -10,6 +16,7 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
   const [autoCalculating, setAutoCalculating] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [activeTab, setActiveTab] = useState('error'); // 'error' or 'gaussian'
+  const [calcNotice, setCalcNotice] = useState(null); // { tone, text }
 
   useEffect(() => {
     if (!gameType) {
@@ -45,7 +52,7 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
             return;
           }
           if (calcResponse.data.success && calcResponse.data.total_calculated > 0) {
-            setStatusMessage(`✅ Calculated ${calcResponse.data.total_calculated} accuracy records!`);
+            setStatusMessage(`Matched ${calcResponse.data.total_calculated} predictions to draws.`);
             const refresh = await getPredictionAccuracy(gameType, 50);
             if (!cancelled) {
               setAccuracyData(refresh.data.accuracy_records || []);
@@ -65,7 +72,7 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
           }
         } catch (error) {
           if (!cancelled) {
-            setStatusMessage(`⚠️ ${error.response?.data?.detail || error.message || 'Calculation failed'}`);
+            setStatusMessage(error.response?.data?.detail || error.message || 'Calculation failed');
             setAutoCalculating(false);
             console.error('Auto-calculation failed:', error);
           }
@@ -102,27 +109,26 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
 
   const handleAutoCalculate = async () => {
     setCalculating(true);
+    setCalcNotice(null);
     try {
       const response = await autoCalculateAccuracy(gameType);
-      console.log('Auto-calculate result:', response.data);
-      
-      // Refresh accuracy data after calculation
       await fetchAccuracy();
-      
-      // Show appropriate message
-      if (response.data.success) {
-        if (response.data.total_calculated > 0) {
-          alert(`✅ Successfully calculated ${response.data.total_calculated} accuracy records!`);
-        } else {
-          alert(`ℹ️ ${response.data.message || 'No new accuracy records calculated. All predictions may already be matched or dates do not match.'}`);
-        }
+      if (response.data.success && response.data.total_calculated > 0) {
+        setCalcNotice({ tone: 'success', text: `Matched ${response.data.total_calculated} predictions to draws.` });
+      } else if (response.data.success) {
+        setCalcNotice({
+          tone: 'info',
+          text:
+            response.data.message ||
+            "Nothing new to match. Every prediction is already scored, or its draw hasn't happened yet.",
+        });
       } else {
-        alert(`⚠️ ${response.data.message || 'Calculation completed but no records were created.'}`);
+        setCalcNotice({ tone: 'warning', text: response.data.message || 'The check finished but no records were created.' });
       }
     } catch (error) {
       console.error('Error auto-calculating accuracy:', error);
       const errorMsg = error.response?.data?.detail || error.response?.data?.message || error.message;
-      alert('❌ Failed to calculate accuracy: ' + errorMsg);
+      setCalcNotice({ tone: 'error', text: `Couldn't score predictions. ${errorMsg}` });
     } finally {
       setCalculating(false);
     }
@@ -141,13 +147,21 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
     return null;
   }
 
+  const header = (
+    <CardHeader
+      icon={TbChartLine}
+      title="Accuracy & distribution"
+      description="How far past picks landed from the real draws, and how draw sums are spread."
+    />
+  );
+
   if (loading) {
     return (
-      <div className="bg-charcoal-800 rounded-xl shadow-tech-lg p-6 border-2 border-electric-500/30">
-        <div className="text-center py-8">
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-electric-500 mx-auto"></div>
-        </div>
-      </div>
+      <section className="card" aria-busy="true">
+        {header}
+        <div className="skeleton h-10 rounded-xl" />
+        <div className="skeleton mt-5 h-60 rounded-xl" />
+      </section>
     );
   }
 
@@ -204,47 +218,39 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
   const sumHistogram = gaussianData?.distribution_data ? 
     createHistogram(gaussianData.distribution_data.map(d => d.sum)) : [];
 
-  const generateGaussianCurve = (mean, std, min, max, points = 50) => {
-    const step = (max - min) / points;
-    return Array(points).fill(0).map((_, i) => {
-      const x = min + i * step;
-      const exponent = -Math.pow(x - mean, 2) / (2 * Math.pow(std, 2));
-      const y = (1 / (std * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
-      return { bin: Math.round(x), y: y * gaussianData.distribution_data.length * ((max - min) / points) };
-    });
-  };
-
-  const gaussianCurve = gaussianData?.statistics ? generateGaussianCurve(
-    gaussianData.statistics.sum.mean,
-    gaussianData.statistics.sum.std,
-    gaussianData.statistics.sum.min,
-    gaussianData.statistics.sum.max
-  ) : [];
+  // Normal curve evaluated at each histogram bin centre, so bars and line share one x-axis.
+  const sumStats = gaussianData?.statistics?.sum;
+  const sumValues = gaussianData?.distribution_data?.map((d) => d.sum) || [];
+  const histBinWidth = sumValues.length && sumHistogram.length
+    ? (Math.max(...sumValues) - Math.min(...sumValues)) / sumHistogram.length
+    : 0;
+  const histogramWithCurve = sumHistogram.map((b) => {
+    if (!sumStats?.std) return b;
+    const z = (b.bin - sumStats.mean) / sumStats.std;
+    const pdf = Math.exp(-0.5 * z * z) / (sumStats.std * Math.sqrt(2 * Math.PI));
+    return { ...b, y: Number((pdf * sumValues.length * histBinWidth).toFixed(2)) };
+  });
 
   const CustomTooltip = ({ active, payload }) => {
     if (active && payload && payload.length) {
       const data = payload[0].payload;
       return (
-        <div className="bg-charcoal-700 border-2 border-electric-500 rounded-lg p-3 shadow-lg">
-          <p className="text-electric-300 font-semibold mb-1">
-            Draw: {new Date(data.date).toLocaleDateString()}
+        <div className="rounded-xl border border-white/10 bg-charcoal-800 p-3 text-sm shadow-tech-lg">
+          <p className="mb-1 font-semibold text-white">Draw {new Date(data.date).toLocaleDateString()}</p>
+          <p className="font-mono text-silver-300">{data.numbers?.join(' · ')}</p>
+          <p className="mt-1 text-silver-400">
+            Sum <span className="font-mono text-orange-300">{data.y}</span> · log(product){' '}
+            <span className="font-mono text-electric-300">{data.x.toFixed(2)}</span>
           </p>
-          <p className="text-silver-200 text-sm">Numbers: {data.numbers?.join(', ')}</p>
-          <p className="text-orange-300 text-sm mt-1">Sum: {data.y}</p>
-          <p className="text-electric-300 text-sm">Log(Product): {data.x.toFixed(2)}</p>
           {data.winners > 0 ? (
-            <>
-              <p className="text-green-400 text-sm font-bold mt-2">
-                🎉 Winners: {data.winners}
-              </p>
+            <p className="mt-2 font-semibold text-emerald-300">
+              {data.winners} jackpot winner{data.winners > 1 ? 's' : ''}
               {data.jackpot > 0 && (
-                <p className="text-yellow-400 text-xs">
-                  Jackpot: ₱{(data.jackpot / 1000000).toFixed(1)}M
-                </p>
+                <span className="font-normal text-silver-400"> · ₱{(data.jackpot / 1000000).toFixed(1)}M</span>
               )}
-            </>
+            </p>
           ) : (
-            <p className="text-silver-400 text-xs mt-2">No winners</p>
+            <p className="mt-2 text-xs text-silver-500">No jackpot winner</p>
           )}
         </div>
       );
@@ -252,167 +258,125 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
     return null;
   };
 
-  return (
-    <div className="bg-charcoal-800 rounded-xl shadow-tech-lg p-6 border-2 border-electric-500/30">
-      <h2 className="text-xl font-bold text-electric-400 mb-4 flex items-center">
-        <span className="w-1 h-8 bg-electric-500 rounded-full mr-3 tech-glow"></span>
-        Analysis Dashboard
-      </h2>
+  const TABS = [
+    ['error', 'Error distance'],
+    ['gaussian', 'Sum distribution'],
+  ];
 
-      {/* Main Tab Navigation */}
-      <div className="border-b-2 border-silver-600/30 mb-6">
-        <nav className="flex space-x-4">
+  return (
+    <section className="card">
+      {header}
+
+      <div role="tablist" aria-label="Analysis view" className="tabs">
+        {TABS.map(([id, label]) => (
           <button
-            onClick={() => setActiveTab('error')}
-            className={`py-2 px-4 border-b-2 font-semibold transition-colors ${
-              activeTab === 'error'
-                ? 'border-electric-500 text-electric-300'
-                : 'border-transparent text-silver-400 hover:text-electric-300'
-            }`}
+            key={id}
+            type="button"
+            role="tab"
+            id={`eda-tab-${id}`}
+            aria-selected={activeTab === id}
+            aria-controls={`eda-panel-${id}`}
+            onClick={() => setActiveTab(id)}
+            className="tab"
           >
-            Error Distance Analysis
+            {label}
           </button>
-          <button
-            onClick={() => setActiveTab('gaussian')}
-            className={`py-2 px-4 border-b-2 font-semibold transition-colors ${
-              activeTab === 'gaussian'
-                ? 'border-electric-500 text-electric-300'
-                : 'border-transparent text-silver-400 hover:text-electric-300'
-            }`}
-          >
-            Gaussian Distribution
-          </button>
-        </nav>
+        ))}
       </div>
 
-      {/* Error Distance Analysis Tab */}
       {activeTab === 'error' && (
-        <>
+        <div role="tabpanel" id="eda-panel-error" aria-labelledby="eda-tab-error" className="space-y-4">
+          {calcNotice && (
+            <Notice tone={calcNotice.tone} onDismiss={() => setCalcNotice(null)}>
+              {calcNotice.text}
+            </Notice>
+          )}
+
           {accuracyData.length === 0 ? (
-            <div className="space-y-4">
-              <div className="bg-charcoal-700/50 rounded-lg p-4 border border-silver-600/30">
-                {autoCalculating ? (
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3">
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-electric-500"></div>
-                      <p className="text-electric-400 font-semibold">Calculating accuracy automatically...</p>
-                    </div>
-                    {statusMessage && (
-                      <p className="text-sm text-silver-300 ml-8">{statusMessage}</p>
-                    )}
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-silver-300 mb-2 font-semibold">No accuracy data available.</p>
-                    {statusMessage ? (
-                      <div className="space-y-2">
-                        <p className="text-sm text-silver-400">{statusMessage}</p>
-                        <p className="text-xs text-silver-500 mt-2">
-                          <span className="text-electric-400">Smart Matching:</span> The system automatically matches predictions to **future** lottery draws that occur 1-7 days after the prediction date.
-                        </p>
-                      </div>
-                    ) : (
-                      <>
-                        <p className="text-sm text-silver-400 mb-3">
-                          The system automatically calculates accuracy when:
-                        </p>
-                        <ul className="list-disc list-inside text-sm text-silver-400 space-y-1 mb-3 ml-2">
-                          <li>You generate predictions</li>
-                          <li>You scrape results</li>
-                          <li>This page loads</li>
-                        </ul>
-                        <p className="text-xs text-silver-500 mt-3">
-                          <span className="text-electric-400">How it works:</span> Predictions are matched to future lottery draws (1-7 days after the prediction). For example, a January 3 prediction will match to January 4-10 draws. Error distance is calculated and fed back to the DRL model for continuous improvement.
-                        </p>
-                      </>
-                    )}
-                  </>
-                )}
+            autoCalculating ? (
+              <div className="card-inset flex items-start gap-3" aria-live="polite">
+                <Spinner className="h-5 w-5" />
+                <div>
+                  <p className="font-medium text-white">Scoring past predictions…</p>
+                  {statusMessage && <p className="mt-1 text-sm text-silver-400">{statusMessage}</p>}
+                </div>
               </div>
-              {!autoCalculating && (
-                <button
-                  onClick={handleAutoCalculate}
-                  disabled={calculating}
-                  className="px-4 py-2 bg-charcoal-700 hover:bg-charcoal-600 text-silver-300 rounded-lg font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 border border-silver-600/30"
-                >
-                  {calculating ? (
-                    <>
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-silver-300"></div>
-                      Calculating...
-                    </>
-                  ) : (
-                    '🔄 Calculate Now'
-                  )}
-                </button>
-              )}
-            </div>
+            ) : (
+              <EmptyState
+                icon={TbCalculator}
+                title="No scored predictions yet"
+                action={
+                  <button type="button" onClick={handleAutoCalculate} disabled={calculating} className="btn-secondary btn-sm">
+                    {calculating ? <Spinner className="h-4 w-4" /> : <TbCalculator aria-hidden />}
+                    {calculating ? 'Scoring…' : 'Score predictions now'}
+                  </button>
+                }
+              >
+                {statusMessage ||
+                  'Each prediction is scored against the first real draw 1 to 7 days after it was made. Run the models, then check back after the next draw.'}
+              </EmptyState>
+            )
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-8">
               <div>
-                <h3 className="text-lg font-semibold text-electric-300 mb-3">Error Distance Trends</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <LineChart data={errorTrendData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#BDC3C7" opacity={0.3} />
-                    <XAxis dataKey="index" stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                    <YAxis stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#2C3E50', 
-                        border: '2px solid #3498DB',
-                        borderRadius: '8px',
-                        color: '#ECF0F1'
-                      }} 
-                    />
-                    <Legend wrapperStyle={{ color: '#BDC3C7' }} />
-                    <Line type="monotone" dataKey="error" stroke="#E67E22" strokeWidth={2} name="Error Distance" />
-                    <Line type="monotone" dataKey="matches" stroke="#3498DB" strokeWidth={2} name="Numbers Matched" />
+                <h3 className="mb-1 text-sm font-semibold text-white">Error distance, last 20 predictions</h3>
+                <p className="mb-3 text-sm text-silver-400">Lower is closer. Matches counts how many numbers hit.</p>
+                <ResponsiveContainer width="100%" height={260}>
+                  <LineChart data={errorTrendData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid {...gridProps} />
+                    <XAxis dataKey="index" {...axisProps} />
+                    <YAxis {...axisProps} />
+                    <Tooltip {...tooltipStyle} cursor={{ stroke: CHART.grid }} />
+                    <Legend {...legendStyle} />
+                    <Line type="monotone" dataKey="error" stroke={CHART.accent} strokeWidth={2} dot={false} name="Error distance" />
+                    <Line type="monotone" dataKey="matches" stroke={CHART.primary} strokeWidth={2} dot={false} name="Numbers matched" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-electric-300 mb-3">Model Comparison</h3>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={modelComparisonData}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#BDC3C7" opacity={0.3} />
-                    <XAxis dataKey="model" stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                    <YAxis stroke="#BDC3C7" tick={{ fill: '#BDC3C7' }} />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#2C3E50', 
-                        border: '2px solid #3498DB',
-                        borderRadius: '8px',
-                        color: '#ECF0F1'
-                      }} 
-                    />
-                    <Legend wrapperStyle={{ color: '#BDC3C7' }} />
-                    <Bar dataKey="avgError" fill="#E67E22" name="Avg Error Distance" radius={[8, 8, 0, 0]} />
-                    <Bar dataKey="avgMatches" fill="#3498DB" name="Avg Matches" radius={[8, 8, 0, 0]} />
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <h3 className="text-sm font-semibold text-white">Model comparison</h3>
+                  <span className="rounded-md border border-amber-400/30 bg-amber-500/10 px-2 py-0.5 text-2xs font-medium text-amber-200">
+                    Illustrative values, not live data
+                  </span>
+                </div>
+                <ResponsiveContainer width="100%" height={260}>
+                  <BarChart data={modelComparisonData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid {...gridProps} />
+                    <XAxis dataKey="model" {...axisProps} />
+                    <YAxis {...axisProps} />
+                    <Tooltip {...tooltipStyle} />
+                    <Legend {...legendStyle} />
+                    <Bar dataKey="avgError" fill={CHART.accent} name="Avg error distance" radius={[4, 4, 0, 0]} maxBarSize={28} />
+                    <Bar dataKey="avgMatches" fill={CHART.primary} name="Avg matches" radius={[4, 4, 0, 0]} maxBarSize={28} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
 
               <div>
-                <h3 className="text-lg font-semibold text-electric-300 mb-3">Recent Accuracy Records</h3>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-silver-600/30">
-                    <thead className="bg-gradient-to-r from-electric-900/50 to-charcoal-700">
+                <h3 className="mb-3 text-sm font-semibold text-white">Recent scored predictions</h3>
+                <div className="-mx-5 overflow-x-auto px-5 sm:-mx-6 sm:px-6">
+                  <table className="data-table">
+                    <thead>
                       <tr>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-electric-300 uppercase">Prediction ID</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-electric-300 uppercase">Error Distance</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-electric-300 uppercase">Matches</th>
-                        <th className="px-4 py-3 text-left text-xs font-bold text-electric-300 uppercase">Date</th>
+                        <th scope="col">Prediction</th>
+                        <th scope="col" className="text-right">Error</th>
+                        <th scope="col" className="text-right">Matches</th>
+                        <th scope="col" className="text-right">Scored</th>
                       </tr>
                     </thead>
-                    <tbody className="bg-charcoal-700/30 divide-y divide-silver-600/20">
+                    <tbody>
                       {accuracyData.slice(0, 10).map((record) => (
-                        <tr key={record.id} className="hover:bg-electric-900/20 transition-colors">
-                          <td className="px-4 py-3 text-sm text-silver-200 font-mono">{record.prediction_id}</td>
-                          <td className="px-4 py-3 text-sm text-orange-300 font-semibold">{record.error_distance.toFixed(2)}</td>
-                          <td className="px-4 py-3 text-sm text-silver-200">{record.numbers_matched}</td>
-                          <td className="px-4 py-3 text-sm text-silver-200">
-                            {new Date(record.calculated_at).toLocaleDateString()}
+                        <tr key={record.id}>
+                          <td className="max-w-[10rem] truncate font-mono text-xs text-silver-400" title={record.prediction_id}>
+                            {record.prediction_id}
                           </td>
+                          <td className="text-right font-mono font-semibold text-orange-300 tabular">
+                            {record.error_distance.toFixed(2)}
+                          </td>
+                          <td className="text-right font-mono tabular">{record.numbers_matched}</td>
+                          <td className="whitespace-nowrap text-right">{new Date(record.calculated_at).toLocaleDateString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -421,175 +385,120 @@ const ErrorDistanceAnalysis = ({ gameType }) => {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
-      {/* Gaussian Distribution Tab */}
       {activeTab === 'gaussian' && (
-        <>
+        <div role="tabpanel" id="eda-panel-gaussian" aria-labelledby="eda-tab-gaussian">
           {!gaussianData || !gaussianData.distribution_data || gaussianData.distribution_data.length === 0 ? (
-            <p className="text-silver-300">No distribution data available</p>
+            <EmptyState icon={TbChartLine} title="No distribution data yet">
+              This fills in once draw history has loaded for this game.
+            </EmptyState>
           ) : (
-            <div className="space-y-6">
-              {/* Statistics Summary */}
+            <div className="space-y-8">
               {gaussianData.statistics && (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-4 bg-gradient-to-br from-orange-900/30 to-charcoal-700 rounded-xl border border-orange-500/30">
-                    <div className="text-sm text-silver-300 font-medium mb-2">Sum Statistics</div>
-                    <div className="text-orange-400 font-semibold">
-                      μ = {gaussianData.statistics.sum.mean.toFixed(2)}, σ = {gaussianData.statistics.sum.std.toFixed(2)}
-                    </div>
-                    <div className="text-xs text-silver-400 mt-1">
-                      Range: {gaussianData.statistics.sum.min} - {gaussianData.statistics.sum.max}
-                    </div>
+                <dl className="grid grid-cols-2 gap-3">
+                  <div className="card-inset">
+                    <dt className="text-sm text-silver-400">Sum of six numbers</dt>
+                    <dd className="mt-1 font-mono text-lg font-semibold text-orange-300 tabular">
+                      μ {gaussianData.statistics.sum.mean.toFixed(1)} · σ {gaussianData.statistics.sum.std.toFixed(1)}
+                    </dd>
+                    <dd className="mt-0.5 text-xs text-silver-500 tabular">
+                      Range {gaussianData.statistics.sum.min}–{gaussianData.statistics.sum.max}
+                    </dd>
                   </div>
-                  <div className="p-4 bg-gradient-to-br from-electric-900/30 to-charcoal-700 rounded-xl border border-electric-500/30">
-                    <div className="text-sm text-silver-300 font-medium mb-2">Product Statistics</div>
-                    <div className="text-electric-400 font-semibold">
-                      μ = {gaussianData.statistics.product.mean.toExponential(2)}
-                    </div>
-                    <div className="text-xs text-silver-400 mt-1">
-                      σ = {gaussianData.statistics.product.std.toExponential(2)}
-                    </div>
+                  <div className="card-inset">
+                    <dt className="text-sm text-silver-400">Product of six numbers</dt>
+                    <dd className="mt-1 font-mono text-lg font-semibold text-electric-300 tabular">
+                      μ {gaussianData.statistics.product.mean.toExponential(2)}
+                    </dd>
+                    <dd className="mt-0.5 text-xs text-silver-500 tabular">
+                      σ {gaussianData.statistics.product.std.toExponential(2)}
+                    </dd>
                   </div>
-                </div>
+                </dl>
               )}
 
-              {/* Scatter Plot */}
               <div>
-                <h3 className="text-lg font-semibold text-electric-300 mb-3">Product vs Sum Distribution</h3>
-                <p className="text-sm text-silver-400 mb-2">
-                  X-axis: Log(Product of numbers) | Y-axis: Sum of numbers
+                <h3 className="mb-1 text-sm font-semibold text-white">Product vs. sum, every draw</h3>
+                <p className="mb-3 text-sm text-silver-400">
+                  Each dot is one draw. Green diamonds had a jackpot winner ({drawsWithWinners.length} of{' '}
+                  {drawsWithWinners.length + drawsWithoutWinners.length}).
                 </p>
-                
-                {/* Legend */}
-                <div className="flex items-center gap-4 mb-4 text-sm">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                    <span className="text-silver-300">No Winners ({drawsWithoutWinners.length})</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 bg-green-500 rotate-45"></div>
-                    <span className="text-green-400 font-semibold">🎉 Has Winners ({drawsWithWinners.length})</span>
-                  </div>
-                </div>
-
-                <ResponsiveContainer width="100%" height={350}>
-                  <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#BDC3C7" opacity={0.3} />
-                    <XAxis 
-                      type="number" 
-                      dataKey="x" 
-                      name="Log(Product)" 
-                      stroke="#BDC3C7" 
-                      tick={{ fill: '#BDC3C7' }}
-                      label={{ value: 'Log(Product)', position: 'insideBottom', offset: -10, fill: '#BDC3C7' }}
+                <ResponsiveContainer width="100%" height={320}>
+                  <ScatterChart margin={{ top: 8, right: 8, bottom: 24, left: 0 }}>
+                    <CartesianGrid {...gridProps} vertical />
+                    <XAxis
+                      type="number"
+                      dataKey="x"
+                      name="log(product)"
+                      {...axisProps}
+                      domain={['auto', 'auto']}
+                      label={{ value: 'log(product)', position: 'insideBottom', offset: -16, fill: CHART.axis, fontSize: 12 }}
                     />
-                    <YAxis 
-                      type="number" 
-                      dataKey="y" 
-                      name="Sum" 
-                      stroke="#BDC3C7" 
-                      tick={{ fill: '#BDC3C7' }}
-                      label={{ value: 'Sum', angle: -90, position: 'insideLeft', fill: '#BDC3C7' }}
+                    <YAxis
+                      type="number"
+                      dataKey="y"
+                      name="Sum"
+                      {...axisProps}
+                      label={{ value: 'Sum', angle: -90, position: 'insideLeft', fill: CHART.axis, fontSize: 12 }}
                     />
-                    <Tooltip content={<CustomTooltip />} />
-                    <Legend />
+                    <Tooltip content={<CustomTooltip />} cursor={{ strokeDasharray: '3 3', stroke: CHART.grid }} />
                     {gaussianData.statistics && (
-                      <ReferenceLine 
-                        y={gaussianData.statistics.sum.mean} 
-                        stroke="#E67E22" 
-                        strokeDasharray="3 3"
-                        label={{ value: `Mean: ${gaussianData.statistics.sum.mean.toFixed(1)}`, fill: '#E67E22' }}
+                      <ReferenceLine
+                        y={gaussianData.statistics.sum.mean}
+                        stroke={CHART.accent}
+                        strokeDasharray="4 4"
+                        label={{ value: `mean ${gaussianData.statistics.sum.mean.toFixed(1)}`, fill: CHART.accent, fontSize: 12, position: 'insideTopRight' }}
                       />
                     )}
-                    {/* Draws WITHOUT winners - Blue dots */}
-                    <Scatter 
-                      name="No Winners" 
-                      data={drawsWithoutWinners} 
-                      fill="#3498DB"
-                      fillOpacity={0.6}
-                    />
-                    {/* Draws WITH winners - Green/Gold dots (highlighted!) */}
-                    <Scatter 
-                      name="Has Winners 🎉" 
-                      data={drawsWithWinners} 
-                      fill="#27AE60"
-                      fillOpacity={0.95}
-                      shape="diamond"
-                    />
+                    <Scatter name="No jackpot winner" data={drawsWithoutWinners} fill={CHART.primary} fillOpacity={0.45} />
+                    <Scatter name="Jackpot winner" data={drawsWithWinners} fill={CHART.positive} fillOpacity={0.95} shape="diamond" />
                   </ScatterChart>
                 </ResponsiveContainer>
               </div>
 
-              {/* Histogram with Gaussian Curve */}
               <div>
-                <h3 className="text-lg font-semibold text-electric-300 mb-3">Sum Distribution with Gaussian Overlay</h3>
-                <p className="text-sm text-silver-400 mb-4">
-                  Blue bars: Actual frequency | Orange line: Theoretical Gaussian distribution
-                </p>
-                <ResponsiveContainer width="100%" height={350}>
-                  <BarChart data={sumHistogram} margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#BDC3C7" opacity={0.3} />
-                    <XAxis 
-                      dataKey="bin" 
-                      stroke="#BDC3C7" 
-                      tick={{ fill: '#BDC3C7' }}
-                      label={{ value: 'Sum of Numbers', position: 'insideBottom', offset: -10, fill: '#BDC3C7' }}
+                <h3 className="mb-1 text-sm font-semibold text-white">Sum distribution vs. normal curve</h3>
+                <p className="mb-3 text-sm text-silver-400">Bars are real draw counts. The line is the normal curve with the same mean and spread.</p>
+                <ResponsiveContainer width="100%" height={300}>
+                  <ComposedChart data={histogramWithCurve} margin={{ top: 8, right: 8, bottom: 24, left: -8 }}>
+                    <CartesianGrid {...gridProps} />
+                    <XAxis
+                      dataKey="bin"
+                      {...axisProps}
+                      label={{ value: 'Sum of numbers', position: 'insideBottom', offset: -16, fill: CHART.axis, fontSize: 12 }}
                     />
-                    <YAxis 
-                      stroke="#BDC3C7" 
-                      tick={{ fill: '#BDC3C7' }}
-                      label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fill: '#BDC3C7' }}
-                    />
-                    <Tooltip 
-                      contentStyle={{ 
-                        backgroundColor: '#2C3E50', 
-                        border: '2px solid #3498DB',
-                        borderRadius: '8px',
-                        color: '#ECF0F1'
-                      }}
-                    />
-                    <Legend wrapperStyle={{ color: '#BDC3C7' }} />
-                    <Bar 
-                      dataKey="count" 
-                      fill="#3498DB"
-                      fillOpacity={0.7}
-                      name="Actual Distribution"
-                    />
-                    <Line 
-                      type="monotone"
-                      dataKey="y" 
-                      data={gaussianCurve}
-                      stroke="#E67E22"
-                      strokeWidth={3}
-                      dot={false}
-                      name="Gaussian Curve"
-                    />
-                  </BarChart>
+                    <YAxis {...axisProps} allowDecimals={false} />
+                    <Tooltip {...tooltipStyle} />
+                    <Legend {...legendStyle} verticalAlign="top" height={32} />
+                    <Bar dataKey="count" fill={CHART.primary} fillOpacity={0.7} name="Draws" radius={[3, 3, 0, 0]} />
+                    <Line type="monotone" dataKey="y" stroke={CHART.accent} strokeWidth={2.5} dot={false} name="Normal curve" />
+                  </ComposedChart>
                 </ResponsiveContainer>
 
                 {gaussianData.statistics && (
-                  <div className="mt-4 p-4 bg-charcoal-700/50 rounded-lg border border-silver-600/30">
-                    <p className="text-sm text-silver-300">
-                      <span className="font-semibold text-electric-400">Analysis:</span> The actual distribution 
-                      {Math.abs(gaussianData.statistics.sum.mean - (gaussianData.statistics.sum.min + gaussianData.statistics.sum.max) / 2) < gaussianData.statistics.sum.std ? 
-                        <span className="text-green-400"> appears to follow </span> : 
-                        <span className="text-orange-400"> deviates from </span>
-                      }
-                      a Gaussian (normal) distribution pattern.
-                    </p>
-                    <p className="text-xs text-silver-400 mt-2">
-                      Total draws: {gaussianData.statistics.sum.count} | Mean: {gaussianData.statistics.sum.mean.toFixed(2)} | Std Dev: {gaussianData.statistics.sum.std.toFixed(2)}
-                    </p>
-                  </div>
+                  <p className="mt-4 rounded-xl border border-white/[0.06] bg-charcoal-900/60 p-4 text-sm text-silver-300">
+                    Draw sums
+                    {Math.abs(
+                      gaussianData.statistics.sum.mean -
+                        (gaussianData.statistics.sum.min + gaussianData.statistics.sum.max) / 2
+                    ) < gaussianData.statistics.sum.std ? (
+                      <span className="font-semibold text-emerald-300"> roughly follow </span>
+                    ) : (
+                      <span className="font-semibold text-orange-300"> drift from </span>
+                    )}
+                    a normal distribution across{' '}
+                    <span className="font-mono tabular">{gaussianData.statistics.sum.count}</span> draws. That&apos;s
+                    expected for random draws and doesn&apos;t make any sum more likely next time.
+                  </p>
                 )}
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
-    </div>
+    </section>
   );
 };
 

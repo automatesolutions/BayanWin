@@ -1,5 +1,8 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import * as d3 from 'd3';
+import { TbArrowsShuffle } from 'react-icons/tb';
+import CardHeader from './ui/CardHeader';
+import Notice from './ui/Notice';
 import { getMarkovEdgesGraph } from '../services/api';
 
 const DISPLAY_EDGE_CAP = 64;
@@ -43,8 +46,8 @@ const MarkovGraph = ({ gameType }) => {
         .attr('cy', '45%')
         .attr('r', '75%')
         .call((g) => {
-          g.append('stop').attr('offset', '0%').attr('stop-color', '#161d2a');
-          g.append('stop').attr('offset', '100%').attr('stop-color', '#0e1218');
+          g.append('stop').attr('offset', '0%').attr('stop-color', '#141c28');
+          g.append('stop').attr('offset', '100%').attr('stop-color', '#0c1119');
         });
 
       svg.append('rect').attr('width', w).attr('height', h).attr('fill', `url(#viz-bg-mv-${markerId})`).attr('rx', 8);
@@ -65,7 +68,7 @@ const MarkovGraph = ({ gameType }) => {
         .attr('opacity', 0.85);
 
       if (!edges.length) {
-        svg.append('text').attr('x', w / 2).attr('y', h / 2).attr('text-anchor', 'middle').attr('fill', '#64748b').text('No transition data');
+        svg.append('text').attr('x', w / 2).attr('y', h / 2).attr('text-anchor', 'middle').attr('fill', '#8D98A8').attr('font-size', 14).text('No transition data for this game yet');
         return;
       }
 
@@ -180,20 +183,31 @@ const MarkovGraph = ({ gameType }) => {
   }, [gameType, markerId]);
 
   return (
-    <div className="rounded-xl border border-slate-600/40 bg-[#0f1419] p-4 shadow-lg shadow-black/20 ring-1 ring-white/5">
-      <h3 className="text-base font-semibold tracking-tight text-sky-300/95 mb-1">Cross-draw transitions</h3>
-      <p className="text-[11px] leading-relaxed text-slate-400 mb-3">
-        Directed flow between consecutive draws (top {DISPLAY_EDGE_CAP} links). Advisory only.
-        {meta && (
-          <span className="text-slate-500">
-            {' '}
-            — {meta.edge_count} available, {meta.pairs || 0} pair types in data.
-          </span>
-        )}
-      </p>
-      {error && <p className="text-red-400/90 text-sm mb-2">{String(error)}</p>}
-      <div ref={ref} className="w-full min-h-[460px] rounded-lg overflow-hidden" />
-    </div>
+    <section className="card">
+      <CardHeader
+        icon={TbArrowsShuffle}
+        title="Draw-to-draw transitions"
+        description={
+          <>
+            Arrows show which numbers tend to follow others in the next draw. Showing the top{' '}
+            {DISPLAY_EDGE_CAP} links. Advisory only.
+            {meta && (
+              <span className="text-silver-500">
+                {' '}
+                ({meta.edge_count} links across {meta.pairs || 0} draw pairs.)
+              </span>
+            )}
+          </>
+        }
+      />
+      {error && (
+        <Notice tone="error" title="Graph didn't load" className="mb-4">
+          {String(error)}
+        </Notice>
+      )}
+      <div ref={ref} className="min-h-[460px] w-full overflow-hidden rounded-xl border border-white/[0.05]" />
+      <p className="mt-2 text-xs text-silver-500">Drag a node to move it.</p>
+    </section>
   );
 };
 

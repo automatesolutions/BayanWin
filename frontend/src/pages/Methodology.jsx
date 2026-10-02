@@ -3,16 +3,16 @@ import { Link } from 'react-router-dom';
 
 function Methodology() {
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-4xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-4xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">Methodology</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-10">
+      <article className="article text-slate-200 space-y-10">
         <header className="space-y-3">
           <h1 className="text-3xl font-bold text-white">BayanWin Methodology</h1>
           <p className="text-slate-400 text-sm leading-relaxed max-w-3xl">
@@ -154,7 +154,7 @@ function Methodology() {
               </p>
               <p>
                 Read more in the{' '}
-                <Link to="/blog/markov-chains-lottery" className="text-electric-400 hover:text-electric-300 underline">
+                <Link to="/blog/markov-chains-lottery" className="link">
                   Markov chains lottery article
                 </Link>
                 .
@@ -174,7 +174,7 @@ function Methodology() {
                 The filter blends frequency pressure, gap pressure, and co-occurrence weight into a
                 composite score, then selects the six numbers that best satisfy an equilibrium-inspired
                 balance criterion. It is purely heuristic and exploratory. Read more in the{' '}
-                <Link to="/blog/nash-hotfilter" className="text-electric-400 hover:text-electric-300 underline">
+                <Link to="/blog/nash-hotfilter" className="link">
                   NashHotFilter article
                 </Link>
                 .
@@ -195,7 +195,7 @@ function Methodology() {
                 data accumulates, unlike the static ML models above. The DRL model uses a warm-start
                 weight file to avoid retraining from scratch with each new data batch. Learn more in
                 the{' '}
-                <Link to="/blog/deep-reinforcement-learning" className="text-electric-400 hover:text-electric-300 underline">
+                <Link to="/blog/deep-reinforcement-learning" className="link">
                   deep reinforcement learning article
                 </Link>
                 .
@@ -306,7 +306,7 @@ function Methodology() {
               <strong className="text-slate-200">Data quality variability</strong> — draw history data
               is sourced from curated records and may occasionally contain transcription errors. Users
               who notice inconsistencies are encouraged to{' '}
-              <Link to="/contact" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/contact" className="link">
                 contact us
               </Link>{' '}
               with the specific draw date and game.
@@ -373,15 +373,15 @@ function Methodology() {
         <section className="border-t border-slate-600/50 pt-5 text-sm text-slate-400 space-y-2">
           <p>
             For deeper reading on individual methods, visit the{' '}
-            <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
+            <Link to="/blog" className="link">
               BayanWin Blog
             </Link>
             . For responsible use guidance, see the{' '}
-            <Link to="/responsible-play" className="text-electric-400 hover:text-electric-300 underline">
+            <Link to="/responsible-play" className="link">
               Responsible Play
             </Link>{' '}
             page. To report data issues or ask questions, use the{' '}
-            <Link to="/contact" className="text-electric-400 hover:text-electric-300 underline">
+            <Link to="/contact" className="link">
               Contact
             </Link>{' '}
             page.

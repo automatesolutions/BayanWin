@@ -11,22 +11,21 @@ function BlogMarkovChainsLottery() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-4xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-4xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
-        <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
+        <span aria-hidden className="text-silver-700">/</span>
+        <Link to="/blog" className="link">
           Blog
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">The Fascinating World of Markov Chains: From Drunkard’s Walks to Google’s Algorithms</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-6">
+      <article className="article text-slate-200 space-y-6">
         <header>
-          <p className="text-xs font-mono uppercase tracking-wider text-electric-300 mb-2">Algorithm Notes</p>
           <h1 className="text-3xl font-bold text-white mb-2">
             The Fascinating World of Markov Chains: From Drunkard’s Walks to Google’s Algorithms
           </h1>
@@ -38,7 +37,7 @@ function BlogMarkovChainsLottery() {
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">📖 A Story Rooted in History</h2>
+          <h2 className="text-xl font-semibold text-white">A Story Rooted in History</h2>
           <p>
             In 1906, Russian mathematician Andrey Markov challenged the idea that randomness always required
             independence. He showed that even when events depend on the immediate past, powerful mathematical laws still
@@ -48,7 +47,7 @@ function BlogMarkovChainsLottery() {
         </section>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">🔄 What Makes a Markov Chain Special?</h2>
+          <h2 className="text-xl font-semibold text-white">What Makes a Markov Chain Special?</h2>
           <p>At its heart, a Markov chain is about memorylessness:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>The future depends only on the present.</li>
@@ -72,7 +71,7 @@ function BlogMarkovChainsLottery() {
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">🌍 Real-World Adventures of Markov Chains</h2>
+          <h2 className="text-xl font-semibold text-white">Real-World Adventures of Markov Chains</h2>
           <ul className="list-disc pl-5 space-y-1">
             <li>
               <strong className="text-slate-100">Card Shuffling:</strong> Henri Poincare studied them to understand how
@@ -105,7 +104,7 @@ function BlogMarkovChainsLottery() {
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">🎮 Fun Examples You Can Picture</h2>
+          <h2 className="text-xl font-semibold text-white">Fun Examples You Can Picture</h2>
           <ul className="list-disc pl-5 space-y-1">
             <li>
               <strong className="text-slate-100">The Drunkard&apos;s Walk:</strong> Each step is random, but over time,
@@ -123,7 +122,7 @@ function BlogMarkovChainsLottery() {
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300 border-t border-slate-600/50 pt-5">
-          <h2 className="text-xl font-semibold text-white">🚀 Why Should You Care?</h2>
+          <h2 className="text-xl font-semibold text-white">Why Should You Care?</h2>
           <p>
             Markov chains are the backbone of simulation, prediction, and AI. From weather forecasting to DNA sequencing,
             they help us make sense of uncertainty. They show us that even in randomness, there&apos;s structure-and that
@@ -247,7 +246,7 @@ function BlogMarkovChainsLottery() {
                 How do I view the Markov analysis for a specific PCSO game on BayanWin?
               </h3>
               <p className="text-slate-400 mt-1">
-                Go to the <Link to="/" className="text-electric-400 hover:text-electric-300 underline">homepage</Link>,
+                Go to the <Link to="/" className="link">homepage</Link>,
                 select a game (e.g. 6/49 or 6/58), then scroll down to the Markov Graph visualisation. The graph
                 shows transition relationships between number groups based on the loaded historical window. You can
                 also generate algorithmic predictions to see the Markov model&apos;s candidate output alongside
@@ -274,9 +273,9 @@ function BlogMarkovChainsLottery() {
           future results. No guaranteed wins exist. Play responsibly and within your means.
           <br /><br />
           For broader context, read{' '}
-          <Link to="/about" className="text-electric-400 hover:text-electric-300 underline">About BayanWin</Link>{' '}
+          <Link to="/about" className="link">About BayanWin</Link>{' '}
           and our{' '}
-          <Link to="/responsible-play" className="text-electric-400 hover:text-electric-300 underline">Responsible Play</Link>{' '}
+          <Link to="/responsible-play" className="link">Responsible Play</Link>{' '}
           guidance.
         </div>
 
@@ -286,17 +285,17 @@ function BlogMarkovChainsLottery() {
           </h2>
           <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
             <li>
-              <Link to="/blog/nash-hotfilter" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/nash-hotfilter" className="link">
                 Game theory lottery analysis in the Philippines
               </Link>
             </li>
             <li>
-              <Link to="/blog/deep-reinforcement-learning" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/deep-reinforcement-learning" className="link">
                 AI lottery prediction methods (Deep RL)
               </Link>
             </li>
             <li>
-              <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/methodology" className="link">
                 PCSO data sources and model methodology
               </Link>
             </li>

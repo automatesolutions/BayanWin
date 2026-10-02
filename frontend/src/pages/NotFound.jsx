@@ -1,20 +1,26 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { TbArrowLeft, TbMapOff } from 'react-icons/tb';
 
 function NotFound() {
   return (
-    <main className="container mx-auto px-4 py-16 flex-1 max-w-lg text-center">
-      <h1 className="text-2xl font-bold text-white mb-3">Page not found</h1>
-      <p className="text-slate-400 text-sm mb-6">
-        This URL does not match any page on this build of BayanWin. If you just deployed new routes, wait for the latest
-        revision to serve traffic, then hard refresh (Ctrl+Shift+R).
+    <main id="main" className="page flex max-w-lg flex-col items-center justify-center text-center">
+      <span className="mb-5 inline-flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.08] bg-white/[0.03] text-silver-400">
+        <TbMapOff className="h-7 w-7" aria-hidden />
+      </span>
+      <h1 className="mb-3 text-3xl font-semibold text-white">404: this page doesn&apos;t exist</h1>
+      <p className="mb-8 text-silver-400">
+        The link may be old or mistyped. If this page was just published, give it a minute and hard refresh
+        (Ctrl+Shift+R).
       </p>
-      <Link to="/" className="text-electric-400 hover:text-electric-300 underline mr-4">
-        Home
-      </Link>
-      <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
-        Blog
-      </Link>
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Link to="/" className="btn-primary">
+          <TbArrowLeft aria-hidden /> Back to the dashboard
+        </Link>
+        <Link to="/blog" className="btn-secondary">
+          Read the blog
+        </Link>
+      </div>
     </main>
   );
 }

@@ -51,36 +51,28 @@ const CookieConsentBanner = () => {
   if (!visible) return null;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-50 border-t border-electric-500/40 bg-charcoal-900/95 backdrop-blur">
-      <div className="container mx-auto px-4 py-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <p className="text-xs sm:text-sm text-silver-200 leading-relaxed max-w-4xl">
-          We use necessary cookies to run BayanWin and optional cookies for analytics and ad personalization. You can
-          choose your preferences now and update them later in our{' '}
-          <Link to="/privacy" className="text-electric-300 underline hover:text-electric-200">
+    <div
+      role="region"
+      aria-label="Cookie preferences"
+      className="fixed inset-x-0 bottom-0 z-50 p-3 sm:p-4"
+    >
+      <div className="container mx-auto flex flex-col gap-4 rounded-2xl border border-white/10 bg-charcoal-700 p-4 shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.7)] sm:p-5 lg:flex-row lg:items-center lg:justify-between">
+        <p className="max-w-3xl text-sm leading-relaxed text-silver-300">
+          We use necessary cookies to run BayanWin, plus optional ones for analytics and ad personalization. You can
+          change this any time. See our{' '}
+          <Link to="/privacy" className="link">
             Privacy Policy
           </Link>
           .
         </p>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={actions.rejectOptional}
-            className="px-3 py-2 rounded-md border border-silver-600 text-silver-200 text-xs sm:text-sm hover:bg-charcoal-800"
-          >
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:shrink-0">
+          <button type="button" onClick={actions.rejectOptional} className="btn-ghost">
             Reject optional
           </button>
-          <button
-            type="button"
-            onClick={actions.analyticsOnly}
-            className="px-3 py-2 rounded-md border border-electric-500/60 text-electric-200 text-xs sm:text-sm hover:bg-electric-700/20"
-          >
+          <button type="button" onClick={actions.analyticsOnly} className="btn-secondary">
             Analytics only
           </button>
-          <button
-            type="button"
-            onClick={actions.acceptAll}
-            className="px-3 py-2 rounded-md bg-electric-500 text-charcoal-900 font-semibold text-xs sm:text-sm hover:bg-electric-400"
-          >
+          <button type="button" onClick={actions.acceptAll} className="btn-primary">
             Accept all
           </button>
         </div>

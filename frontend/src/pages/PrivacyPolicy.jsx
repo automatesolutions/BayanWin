@@ -13,16 +13,16 @@ function PrivacyPolicy() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-4xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-4xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">Privacy Policy</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-8 text-sm leading-relaxed">
+      <article className="article text-slate-200 space-y-8 text-sm leading-relaxed">
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Privacy Policy</h1>
           <p className="text-slate-400">
@@ -145,7 +145,7 @@ function PrivacyPolicy() {
               href="https://privacy.gov.ph"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-electric-400 hover:text-electric-300 underline"
+              className="link"
             >
               privacy.gov.ph
             </a>
@@ -183,10 +183,10 @@ function PrivacyPolicy() {
           </h2>
           <p className="text-slate-300">
             Questions about this policy or privacy requests:{' '}
-            <a href={`mailto:${CONTACT_EMAIL}`} className="text-electric-400 hover:text-electric-300 underline break-all">
+            <a href={`mailto:${CONTACT_EMAIL}`} className="link break-all">
               {CONTACT_EMAIL}
             </a>
-            . You may also use our <Link to="/contact" className="text-electric-400 hover:text-electric-300 underline">Contact</Link>{' '}
+            . You may also use our <Link to="/contact" className="link">Contact</Link>{' '}
             page.
           </p>
         </section>

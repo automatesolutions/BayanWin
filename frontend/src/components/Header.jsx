@@ -1,83 +1,88 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, NavLink, useLocation } from 'react-router-dom';
-import logo from '../assets/Logo.png';
+import { TbMenu2, TbX } from 'react-icons/tb';
+import logo from '../assets/logo-128.webp';
 
-const navClass = ({ isActive }) =>
-  `text-sm font-medium px-3 py-1.5 rounded-md transition-colors ${
-    isActive
-      ? 'bg-white/20 text-white'
-      : 'text-white/85 hover:bg-white/10 hover:text-white'
-  }`;
+const NAV = [
+  { to: '/', label: 'Dashboard', end: true },
+  { to: '/methodology', label: 'Methodology' },
+  { to: '/blog', label: 'Blog', prefix: '/blog' },
+  { to: '/about', label: 'About' },
+];
 
 const Header = () => {
   const location = useLocation();
-  const showBrandingH1 = location.pathname === '/';
+  const [open, setOpen] = useState(false);
 
-  const branding = (
-    <>
-      <span className="text-2xl sm:text-3xl md:text-4xl shrink-0">BayanWin</span>
-      <span className="text-base sm:text-lg md:text-xl font-semibold text-white/95">
-        - PCSO results & AI Driven Predictions
-      </span>
-    </>
-  );
+  // Close the mobile menu whenever the route changes.
+  useEffect(() => setOpen(false), [location.pathname]);
 
-  const titleShellClass =
-    'flex flex-wrap items-baseline gap-x-1.5 gap-y-1 font-bold tracking-tight leading-tight';
+  const isActive = (item, navActive) =>
+    navActive || (item.prefix && location.pathname.startsWith(item.prefix));
+
+  const linkClass = (item) => ({ isActive: navActive }) =>
+    `inline-flex min-h-[44px] items-center rounded-lg px-3.5 text-sm font-medium transition-colors ${
+      isActive(item, navActive)
+        ? 'bg-white/[0.08] text-white'
+        : 'text-silver-400 hover:bg-white/[0.05] hover:text-white'
+    }`;
 
   return (
-    <header className="bg-tech-gradient text-white shadow-tech-lg border-b-4 border-electric-500">
-      <div className="container mx-auto px-4 py-6">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex items-center space-x-4 min-w-0">
-            <Link to="/" className="shrink-0" aria-label="BayanWin home">
-              <img src={logo} alt="" className="h-12 w-auto" />
-            </Link>
-            <div className="min-w-0 max-w-3xl">
-              <Link to="/" className="block text-left hover:opacity-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/60 rounded">
-                {showBrandingH1 ? (
-                  <h1
-                    className={titleShellClass}
-                    style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700 }}
-                  >
-                    {branding}
-                  </h1>
-                ) : (
-                  <div className={titleShellClass} style={{ fontFamily: "'Montserrat', sans-serif", fontWeight: 700 }}>
-                    {branding}
-                  </div>
-                )}
-              </Link>
-              <p className="text-silver-200 text-sm mt-2 font-light">
-                ML-powered tools and historical draw data for major lotto games
-              </p>
-            </div>
-          </div>
+    <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-charcoal-900/95">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-electric-500 focus:px-4 focus:py-2 focus:text-charcoal-950"
+      >
+        Skip to content
+      </a>
+      <div className="container mx-auto flex h-16 items-center justify-between gap-4 px-4 sm:px-6">
+        <Link to="/" className="flex min-h-[44px] items-center gap-2.5" aria-label="BayanWin home">
+          <img src={logo} alt="" className="h-8 w-auto" />
+          <span className="font-display text-lg font-semibold tracking-tight text-white">
+            BayanWin
+          </span>
+          <span className="hidden rounded-md border border-white/10 px-1.5 py-0.5 font-mono text-2xs text-silver-500 md:inline">
+            PCSO analytics
+          </span>
+        </Link>
 
-          <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-            <nav className="flex flex-wrap items-center gap-1" aria-label="Main">
-              <NavLink to="/" end className={navClass}>
-                Home
-              </NavLink>
-              <NavLink to="/about" className={navClass}>
-                About BayanWin
-              </NavLink>
-              <NavLink
-                to="/blog"
-                className={({ isActive }) =>
-                  navClass({ isActive: isActive || location.pathname.startsWith('/blog') })
-                }
-              >
-                Blog
-              </NavLink>
-            </nav>
-            <div className="hidden sm:flex items-center space-x-2 pl-2 border-l border-white/20">
-              <div className="w-3 h-3 bg-orange-500 rounded-full animate-pulse" />
-              <span className="text-silver-300 text-xs font-mono">LIVE</span>
-            </div>
-          </div>
-        </div>
+        <nav className="hidden items-center gap-1 md:flex" aria-label="Main">
+          {NAV.map((item) => (
+            <NavLink key={item.to} to={item.to} end={item.end} className={linkClass(item)}>
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+
+        <button
+          type="button"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-lg text-silver-200 hover:bg-white/[0.06] md:hidden"
+          aria-expanded={open}
+          aria-controls="mobile-nav"
+          aria-label={open ? 'Close menu' : 'Open menu'}
+          onClick={() => setOpen((v) => !v)}
+        >
+          {open ? <TbX className="h-6 w-6" /> : <TbMenu2 className="h-6 w-6" />}
+        </button>
       </div>
+
+      {open && (
+        <nav
+          id="mobile-nav"
+          aria-label="Main"
+          className="border-t border-white/[0.06] bg-charcoal-900 px-4 pb-4 pt-2 md:hidden"
+        >
+          <ul className="flex flex-col gap-1">
+            {NAV.map((item) => (
+              <li key={item.to}>
+                <NavLink to={item.to} end={item.end} className={(s) => `${linkClass(item)(s)} w-full`}>
+                  {item.label}
+                </NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      )}
     </header>
   );
 };

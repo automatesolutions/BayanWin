@@ -2,46 +2,286 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  /* Modern Tech Color Palette */
-  --color-electric: #3498DB;
-  --color-orange: #E67E22;
-  --color-charcoal: #2C3E50;
-  --color-silver: #BDC3C7;
-  
-  /* Legacy aliases */
-  --color-primary: #3498DB;
-  --color-secondary: #E67E22;
-  --color-success: #10b981;
-  --color-error: #ef4444;
-}
+/* ─────────────────────────────────────────────────────────────
+   BayanWin design system
+   Rules live in .claude/skills/bayanwin-design/SKILL.md.
+   ───────────────────────────────────────────────────────────── */
 
-body {
-  margin: 0;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
-    sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  background-color: #2C3E50;
-  color: #ECF0F1;
-}
-
-/* Modern tech feel - subtle animations */
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+@layer base {
+  :root {
+    --color-bg: #0c1119;
+    --color-surface: #131a25;
+    --color-raised: #1a2331;
+    --color-line: rgba(255, 255, 255, 0.08);
+    --color-text: #edf1f5;
+    --color-muted: #a6b0be;
+    --color-primary: #3b9eff;
+    --color-accent: #f59331;
+    --color-success: #34d399;
+    --color-error: #f87171;
+    --header-h: 4rem;
+    color-scheme: dark;
   }
-  50% {
-    box-shadow: 0 0 20px rgba(52, 152, 219, 0.8);
+
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: calc(var(--header-h) + 1rem);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply m-0 bg-charcoal-900 font-sans text-silver-100 antialiased;
+    font-feature-settings: 'ss01', 'cv01';
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply font-display tracking-tight;
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  ::selection {
+    @apply bg-orange-500/35 text-white;
+  }
+  input,
+  textarea {
+    caret-color: var(--color-accent);
+  }
+
+  /* One visible focus style everywhere (keyboard only). */
+  :focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  * {
+    box-sizing: border-box;
   }
 }
 
-.tech-glow {
-  animation: pulse-glow 2s ease-in-out infinite;
+@layer components {
+  /* Layout */
+  .page {
+    @apply container mx-auto flex-1 px-4 py-10 sm:px-6 sm:py-14;
+  }
+
+  /* Surfaces */
+  .card {
+    @apply rounded-card border border-white/[0.07] bg-charcoal-800 p-5 shadow-tech-lg sm:p-6;
+  }
+  .card-inset {
+    @apply rounded-xl border border-white/[0.06] bg-charcoal-900/60 p-4;
+  }
+
+  /* Headings */
+  /* Small label for data groups. Never above a heading (Impeccable craft floor). */
+  .eyebrow {
+    @apply text-xs font-medium text-silver-400;
+  }
+  .section-title {
+    @apply font-display text-2xl font-semibold text-white sm:text-3xl;
+  }
+  .card-title {
+    @apply flex items-center gap-2.5 font-display text-lg font-semibold text-white;
+  }
+  .card-title > svg {
+    @apply h-5 w-5 shrink-0 text-electric-400;
+  }
+  .lede {
+    @apply max-w-prose text-base leading-relaxed text-silver-400;
+  }
+
+  /* Buttons: 44px minimum touch target (Apple HIG). */
+  .btn {
+    @apply inline-flex min-h-[44px] select-none items-center justify-center gap-2 rounded-xl px-5 text-sm font-semibold transition-colors duration-150 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn > svg {
+    @apply h-[18px] w-[18px] shrink-0;
+  }
+  .btn-primary {
+    @apply btn bg-orange-500 text-charcoal-950 shadow-tech hover:bg-orange-400 active:bg-orange-600;
+  }
+  .btn-primary:disabled {
+    @apply border border-white/10 bg-charcoal-600 text-silver-300 opacity-100 shadow-none;
+  }
+  .btn-secondary {
+    @apply btn border border-white/10 bg-white/[0.04] text-silver-100 hover:border-white/20 hover:bg-white/[0.08];
+  }
+  .btn-ghost {
+    @apply btn px-3 text-silver-300 hover:bg-white/[0.06] hover:text-white;
+  }
+  .btn-lg {
+    @apply min-h-[52px] px-6 text-base;
+  }
+  .btn-sm {
+    @apply min-h-[40px] rounded-lg px-3.5 text-xs;
+  }
+
+  /* Links */
+  .link {
+    @apply text-electric-300 underline decoration-electric-400/40 underline-offset-4 transition-colors hover:text-electric-200 hover:decoration-electric-300;
+  }
+
+  /* Tabs */
+  .tabs {
+    @apply -mx-1 mb-5 flex gap-1 overflow-x-auto rounded-xl border border-white/[0.06] bg-charcoal-900/60 p-1;
+  }
+  .tab {
+    @apply min-h-[40px] flex-1 whitespace-nowrap rounded-lg px-4 text-sm font-medium text-silver-400 transition-colors hover:text-white;
+  }
+  .tab[aria-selected='true'] {
+    @apply bg-charcoal-600 text-white shadow-tech;
+  }
+
+  /* Chips & badges */
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-md border border-electric-400/25 bg-electric-500/10 px-2 py-0.5 font-mono text-2xs font-medium text-electric-200;
+  }
+
+  /* Tables */
+  .data-table {
+    @apply w-full min-w-full text-sm;
+  }
+  /* :where() keeps specificity at zero so text-right etc. still apply. */
+  :where(.data-table) th {
+    text-align: left;
+  }
+  .data-table thead th {
+    @apply border-b border-white/[0.08] px-3 py-2.5 text-2xs font-semibold uppercase tracking-wider text-silver-500;
+  }
+  .data-table tbody td,
+  .data-table tbody th {
+    @apply border-b border-white/[0.05] px-3 py-3 text-silver-200;
+  }
+  .data-table tbody tr {
+    @apply transition-colors hover:bg-white/[0.02];
+  }
+
+  /* Breadcrumbs (content pages) */
+  .breadcrumbs {
+    @apply mb-6 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-silver-500;
+  }
+
+  /*
+   * Long-form article body. Content pages historically used text-sm (14px) for
+   * paragraphs; bump to 17px for reading comfort and tame emoji-heavy headings.
+   */
+  .article {
+    @apply rounded-card border border-white/[0.07] bg-charcoal-800/70 px-5 py-8 sm:px-10 sm:py-12;
+  }
+  .article section,
+  .article header > p {
+    font-size: 1.0625rem;
+    line-height: 1.75;
+  }
+  .article section p,
+  .article section li,
+  .article header > p {
+    @apply text-silver-300;
+    max-width: 36rem; /* ~70 characters of Satoshi at 17px */
+  }
+  .article h1 {
+    @apply text-3xl font-semibold leading-tight sm:text-4xl;
+  }
+  .article h2 {
+    @apply mt-4 text-2xl font-semibold;
+  }
+  .article h3 {
+    @apply text-lg font-semibold;
+  }
+  .article a:not([class*='btn']) {
+    @apply underline-offset-4;
+  }
+  .article figure {
+    @apply overflow-hidden rounded-xl;
+  }
 }
 
-* {
-  box-sizing: border-box;
+@layer utilities {
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+  /* Legacy glow: kept as a calm static accent instead of an infinite pulse. */
+  .tech-glow {
+    box-shadow: 0 0 12px rgba(59, 158, 255, 0.35);
+  }
 }
 
+/* Skeleton shimmer for loading states */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton {
+  @apply relative overflow-hidden bg-white/[0.06];
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
+  animation: shimmer 1.4s infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  /* Keep colour/opacity feedback, remove travel and looping shimmer. */
+  .skeleton::after {
+    animation: none;
+  }
+  .animate-spin {
+    animation-duration: 2.4s;
+  }
+}
+
+/* Pipeline diagram (PipelineDiagram.jsx). Edit colours here. */
+.pipeline-diagram .pd-box {
+  fill: #131a25;
+  stroke: rgba(255, 255, 255, 0.12);
+}
+.pipeline-diagram .pd-box-primary {
+  fill: rgba(59, 158, 255, 0.1);
+  stroke: rgba(94, 174, 255, 0.55);
+}
+.pipeline-diagram .pd-box-accent {
+  fill: rgba(245, 147, 49, 0.12);
+  stroke: rgba(251, 162, 77, 0.6);
+}
+.pipeline-diagram .pd-edge {
+  stroke: currentColor;
+  stroke-opacity: 0.35;
+  stroke-width: 1.25;
+}
+.pipeline-diagram .pd-edge-strong {
+  stroke: #fba24d;
+  stroke-opacity: 0.9;
+  stroke-width: 2;
+}
+.pipeline-diagram .pd-title {
+  fill: #edf1f5;
+  font: 600 15px 'General Sans', Satoshi, sans-serif;
+}
+.pipeline-diagram .pd-sub {
+  fill: #a6b0be;
+  font: 400 12px Satoshi, sans-serif;
+}
+
+/* Browser surfaces carry the palette too. */
+html {
+  scrollbar-color: #2a3546 #0c1119;
+}
+input::placeholder {
+  color: #8d98a8;
+}

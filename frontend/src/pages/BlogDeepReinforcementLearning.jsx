@@ -4,30 +4,29 @@ import { Link } from 'react-router-dom';
 function BlogDeepReinforcementLearning() {
   useEffect(() => {
     const prevTitle = document.title;
-    document.title = '🤖 Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph';
+    document.title = 'Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph';
     return () => {
       document.title = prevTitle;
     };
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-4xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-4xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
-        <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
+        <span aria-hidden className="text-silver-700">/</span>
+        <Link to="/blog" className="link">
           Blog
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
-        <span className="text-slate-300">🤖 Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph</span>
+        <span aria-hidden className="text-silver-700">/</span>
+        <span className="text-slate-300">Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-6">
+      <article className="article text-slate-200 space-y-6">
         <header>
-          <p className="text-xs font-mono uppercase tracking-wider text-electric-300 mb-2">AI Research Notes</p>
-          <h1 className="text-3xl font-bold text-white mb-2">🤖 Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph</h1>
+          <h1 className="text-3xl font-bold text-white mb-2">Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph</h1>
           <p className="text-slate-400 text-sm leading-relaxed">
             Imagine teaching a robot to play basketball. You do not give it step-by-step instructions-you let it try,
             fail, and learn from its mistakes. Every time it scores, it gets a reward. Every time it misses, it learns
@@ -38,7 +37,7 @@ function BlogDeepReinforcementLearning() {
         </header>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">🎮 From Atari to AlphaGo</h2>
+          <h2 className="text-xl font-semibold text-white">From Atari to AlphaGo</h2>
           <p>The story of Deep RL is filled with milestones that sound like science fiction:</p>
           <ul className="list-disc pl-5 space-y-2">
             <li>
@@ -66,7 +65,7 @@ function BlogDeepReinforcementLearning() {
         </section>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">🛠️ How It Works (Without the Math Headache)</h2>
+          <h2 className="text-xl font-semibold text-white">How It Works (Without the Math Headache)</h2>
           <p>At its core, Deep RL is about an agent interacting with an environment:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>The agent observes the current state (like pixels in a video game or sensor data from a robot).</li>
@@ -87,7 +86,7 @@ function BlogDeepReinforcementLearning() {
         </section>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">🌍 Beyond Games: Real-World Superpowers</h2>
+          <h2 className="text-xl font-semibold text-white">Beyond Games: Real-World Superpowers</h2>
           <ul className="list-disc pl-5 space-y-1">
             <li>Robotics: Teaching robots to fold laundry, solve Rubik&apos;s cubes, or assist in surgery.</li>
             <li>Energy: Google used Deep RL to cut data center cooling costs by 40%.</li>
@@ -104,7 +103,7 @@ function BlogDeepReinforcementLearning() {
         </section>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
-          <h2 className="text-xl font-semibold text-white">🔍 The Challenges</h2>
+          <h2 className="text-xl font-semibold text-white">The Challenges</h2>
           <p>Of course, it is not all smooth sailing. Deep RL faces hurdles:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>Exploration vs. Exploitation: Should the agent stick to what works or try something new?</li>
@@ -125,7 +124,7 @@ function BlogDeepReinforcementLearning() {
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300 border-t border-slate-600/50 pt-5">
-          <h2 className="text-xl font-semibold text-white">🚀 Why It Matters</h2>
+          <h2 className="text-xl font-semibold text-white">Why It Matters</h2>
           <p>
             Deep RL is more than an academic curiosity. It is about building machines that can learn like humans-through
             experience, trial, and adaptation. Whether it is curing diseases, managing smart cities, or exploring space,
@@ -241,7 +240,7 @@ function BlogDeepReinforcementLearning() {
               </h3>
               <p className="text-slate-400 mt-1">
                 After selecting a PCSO game on the{' '}
-                <Link to="/" className="text-electric-400 hover:text-electric-300 underline">homepage</Link>{' '}
+                <Link to="/" className="link">homepage</Link>{' '}
                 and clicking the prediction button, the DRL model's candidate six-number line streams in
                 alongside the other five models. The Council Panel shows where models agree and disagree.
                 The Error Distance Analysis section shows how past predictions from each model compared with
@@ -275,17 +274,17 @@ function BlogDeepReinforcementLearning() {
           </h2>
           <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
             <li>
-              <Link to="/blog/markov-chains-lottery" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/markov-chains-lottery" className="link">
                 Markov chain lottery prediction Philippines guide
               </Link>
             </li>
             <li>
-              <Link to="/blog/nash-hotfilter" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/nash-hotfilter" className="link">
                 Game theory lottery analysis with NashHotFilter
               </Link>
             </li>
             <li>
-              <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/methodology" className="link">
                 Algorithmic lottery prediction methodology
               </Link>
             </li>

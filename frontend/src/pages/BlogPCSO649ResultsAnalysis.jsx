@@ -11,22 +11,21 @@ function BlogPCSO649ResultsAnalysis() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-4xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-4xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
-        <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
+        <span aria-hidden className="text-silver-700">/</span>
+        <Link to="/blog" className="link">
           Blog
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">PCSO 6/49 Analysis</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-6">
+      <article className="article text-slate-200 space-y-6">
         <header>
-          <p className="text-xs font-mono uppercase tracking-wider text-electric-300 mb-2">Game Analysis · Philippines</p>
           <h1 className="text-3xl font-bold text-white mb-2">PCSO 6/49 Results Analysis in the Philippines</h1>
           <p className="text-slate-400 text-sm leading-relaxed">
             This page explains how to read Super Lotto 6/49 draw history in the Philippines using frequency, transition,
@@ -184,11 +183,11 @@ function BlogPCSO649ResultsAnalysis() {
               <h3 className="font-semibold text-slate-200">Where do I find responsible-use guidance?</h3>
               <p className="text-slate-400 mt-1">
                 Read{' '}
-                <Link to="/responsible-play" className="text-electric-400 hover:text-electric-300 underline">
+                <Link to="/responsible-play" className="link">
                   Responsible Play
                 </Link>{' '}
                 and the{' '}
-                <Link to="/terms" className="text-electric-400 hover:text-electric-300 underline">Terms of Use</Link>.
+                <Link to="/terms" className="link">Terms of Use</Link>.
                 These pages outline our principles around informed, moderate, and legally compliant use of
                 lottery analysis tools.
               </p>
@@ -200,22 +199,22 @@ function BlogPCSO649ResultsAnalysis() {
           <h2 className="text-lg font-semibold text-white">Related reading</h2>
           <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
             <li>
-              <Link to="/blog/pcso-658-results-analysis" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/pcso-658-results-analysis" className="link">
                 PCSO 6/58 results analysis
               </Link>
             </li>
             <li>
-              <Link to="/blog/deep-reinforcement-learning" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/deep-reinforcement-learning" className="link">
                 AI lottery prediction with Deep RL
               </Link>
             </li>
             <li>
-              <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/methodology" className="link">
                 Lottery methodology and data assumptions
               </Link>
             </li>
             <li>
-              <Link to="/about" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/about" className="link">
                 About BayanWin
               </Link>
             </li>

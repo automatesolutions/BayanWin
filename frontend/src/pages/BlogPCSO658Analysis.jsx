@@ -11,22 +11,21 @@ function BlogPCSO658Analysis() {
   }, []);
 
   return (
-    <main className="container mx-auto px-4 py-8 flex-1 max-w-4xl">
-      <nav className="mb-6 text-sm text-slate-400">
-        <Link to="/" className="text-electric-400 hover:text-electric-300 underline">
+    <main id="main" className="page max-w-4xl">
+      <nav className="breadcrumbs" aria-label="Breadcrumb">
+        <Link to="/" className="link">
           Home
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
-        <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">
+        <span aria-hidden className="text-silver-700">/</span>
+        <Link to="/blog" className="link">
           Blog
         </Link>
-        <span className="mx-2 text-slate-600">/</span>
+        <span aria-hidden className="text-silver-700">/</span>
         <span className="text-slate-300">PCSO 6/58 Analysis</span>
       </nav>
 
-      <article className="rounded-lg border border-slate-600/50 bg-slate-800/40 px-5 py-8 text-slate-200 shadow-sm space-y-6">
+      <article className="article text-slate-200 space-y-6">
         <header>
-          <p className="text-xs font-mono uppercase tracking-wider text-electric-300 mb-2">Game Analysis · Philippines</p>
           <h1 className="text-3xl font-bold text-white mb-2">PCSO 6/58 Results Analysis in the Philippines</h1>
           <p className="text-slate-400 text-sm leading-relaxed">
             This guide explains how to read PCSO Ultra Lotto 6/58 historical draw behavior using frequency, gap, and
@@ -183,9 +182,9 @@ function BlogPCSO658Analysis() {
               <h3 className="font-semibold text-slate-200">Where can I learn the full approach?</h3>
               <p className="text-slate-400 mt-1">
                 See the{' '}
-                <Link to="/methodology" className="text-electric-400 hover:text-electric-300 underline">Methodology</Link>{' '}
+                <Link to="/methodology" className="link">Methodology</Link>{' '}
                 page for data sources, model assumptions, and interpretation limits. The{' '}
-                <Link to="/blog" className="text-electric-400 hover:text-electric-300 underline">Blog</Link>{' '}
+                <Link to="/blog" className="link">Blog</Link>{' '}
                 has deep dives on individual analytical models.
               </p>
             </div>
@@ -196,22 +195,22 @@ function BlogPCSO658Analysis() {
           <h2 className="text-lg font-semibold text-white">Related reading</h2>
           <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
             <li>
-              <Link to="/blog/pcso-649-results-analysis" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/pcso-649-results-analysis" className="link">
                 PCSO 6/49 results analysis in the Philippines
               </Link>
             </li>
             <li>
-              <Link to="/blog/markov-chains-lottery" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/blog/markov-chains-lottery" className="link">
                 Markov chain lottery prediction guide
               </Link>
             </li>
             <li>
-              <Link to="/about" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/about" className="link">
                 About BayanWin
               </Link>
             </li>
             <li>
-              <Link to="/responsible-play" className="text-electric-400 hover:text-electric-300 underline">
+              <Link to="/responsible-play" className="link">
                 Responsible play statement
               </Link>
             </li>
