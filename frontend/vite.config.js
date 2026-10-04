@@ -10,7 +10,7 @@ export default defineConfig({
   // Prerender build (src/entry-server.jsx): bundle packages whose ESM entry
   // Node can't import directly (react-icons uses directory imports).
   ssr: {
-    noExternal: ['react-icons', 'gsap'],
+    noExternal: ['react-icons', 'gsap', 'react-helmet-async'],
   },
   server: {
     port: 3000,

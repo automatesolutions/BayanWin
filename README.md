@@ -1,6 +1,8 @@
-# BayanWin 🎯
+# BayanWin
 
-A modern, full-stack web application that scrapes lottery results from Google Sheets (and optionally [Apify](#apify-optional-ingest)), stores them in InstantDB, and provides **six core ML prediction models** plus **Miro** — an optional **LLM swarm-style** meta-predictor — for multiple lottery games.
+PCSO lotto results, ticket check, statistics, and **7 model picks** (six ML models plus **Miro**, an optional LLM synthesis). Live site: [bayanwin.net](https://bayanwin.net).
+
+The backend scrapes lottery results from Google Sheets (and optionally [Apify](#apify-optional-ingest)), stores them in InstantDB, and serves the React app. InstantDB is cloud-hosted. You do not start a local database process.
 <img width="731" height="200" alt="image" src="https://github.com/user-attachments/assets/8afe2bdd-1548-4047-92cd-474de0942c87" />
 
 <img width="700" height="447" alt="image" src="https://github.com/user-attachments/assets/5b0d852c-e7ba-49c2-97fa-53e1d81ca460" />
@@ -16,17 +18,21 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
 
 > 📚 **Detailed Documentation**: For comprehensive system documentation including workflow flowchart and architecture details, see [SOFTWARE_DOCUMENTATION.html](./SOFTWARE_DOCUMENTATION.html)
 
-## 🎨 Design
+## Design
 
-**Modern Tech Aesthetic:**
-- **Electric Blue (#3498DB)** – Innovation, clarity
-- **Bright Orange (#E67E22)** – Excitement, urgency  
-- **Charcoal Black (#2C3E50)** – Sleek, modern background
-- **Silver (#BDC3C7)** – Futuristic accents
+Dark, data-first UI. Tokens live in `frontend/tailwind.config.js` (see `.claude/skills/bayanwin-design/SKILL.md`).
 
-**Typography:**
-- **BayanWin Title**: Montserrat Bold
-- Clean, modern UI with smooth animations and hover effects
+| Role | Token | Hex |
+|---|---|---|
+| Page | `charcoal-900` | `#0C1119` |
+| Cards | `charcoal-800` | `#131A25` |
+| Links / focus | `electric-500` | `#3B9EFF` |
+| Number balls / primary action | `orange-500` | `#F59331` |
+| Body text | `silver-300` | `#C3CBD6` |
+
+**Type:** General Sans (headings), Satoshi (UI), JetBrains Mono (draw numbers and money).
+
+**Motion:** GSAP (ScrollSmoother on desktop, `Reveal`, pipeline draw). Respects `prefers-reduced-motion`. Header and cookie banner sit outside the smooth-scroll wrapper.
 
 ## ✨ Features
 
@@ -41,12 +47,12 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
   - Automatically detects and skips duplicate entries based on draw_date and draw_number
   - Supports 5 lottery games with separate data sources (sheet IDs in `backend/config.py`)
   
-- **InstantDB Database Integration**:
-  - Backend-as-a-Service (BaaS) for seamless data management
-  - Backend uses InstantDB Admin SDK via Node.js bridge scripts for reliable writes
-  - REST API used for reads and queries
-  - All predictions are automatically saved to InstantDB
-  - Automatic accuracy calculation when new results are scraped
+- **InstantDB**:
+  - Cloud database. No local Instant process to activate
+  - Backend writes through Node Admin SDK scripts (`backend/scripts/`)
+  - Frontend calls only the FastAPI `/api` routes
+  - Predictions and results are stored in InstantDB
+  - Accuracy updates when new draws are ingested
 
 - **Six core ML prediction models**:
   - **XGBoost**: Gradient boosting model using historical patterns (~6-10 seconds)
@@ -75,12 +81,13 @@ A modern, full-stack web application that scrapes lottery results from Google Sh
   - Parallel processing for faster prediction generation
   - Real-time training status indicators
 
-- **Modern Web Interface**: 
-  - React 18 frontend with Vite, Tailwind CSS, and modern tech design
-  - Real-time "Learning..." status indicators for each model
-  - Partial results display - shows successful predictions immediately
-  - Error states clearly displayed for failed models
-  - Responsive design with smooth animations
+- **Site and UI** (homepage + editorial pages):
+  - Home: latest draws first, game selector, ticket checker, 7-model run, stats, error-distance, graphs
+  - `LatestDrawsBoard` plus incremental result sync (timer, tab focus, game change)
+  - Blog, About, Methodology, Responsible play, Contact, Privacy, Terms
+  - Cookie consent banner; AdSense loads only on long-form routes (not the homepage tool)
+  - Route-level code splitting; SEO tags, sitemap, and `robots.txt`
+  - Training status, partial model results, and error states per model
 
 - **Accuracy Tracking & Analysis**:
   - Auto-calculate accuracy when predictions match actual results
@@ -120,16 +127,19 @@ LOF_V2/
 │   │   └── query_results.js      # Query results with proper sorting
 │   ├── utils/           # Utility functions
 │   └── requirements.txt # Python dependencies
-├── frontend/            # React frontend with Vite
-│   ├── .dockerignore    # Keeps host node_modules out of image builds (Cloud Build–safe)
+├── frontend/            # React + Vite (dev: http://localhost:3000)
+│   ├── .dockerignore
 │   ├── src/
-│   │   ├── components/  # React components
-│   │   ├── services/    # API service layer
-│   │   ├── assets/      # Images (Logo.png)
-│   │   └── styles/      # CSS styles
-│   ├── package.json     # Node dependencies
-│   └── tailwind.config.js # Tailwind configuration
-├── lof-v2-db/         # InstantDB schema and configuration
+│   │   ├── pages/       # Home, blog, About, Methodology, legal
+│   │   ├── components/  # Dashboard, ticket checker, UI, motion
+│   │   ├── constants/   # AdSense allow-list (`adsense.js`)
+│   │   ├── seo/         # Per-route titles and descriptions
+│   │   ├── services/    # API client
+│   │   ├── assets/
+│   │   └── styles/      # Design-system CSS
+│   ├── public/          # ads.txt, robots.txt, sitemap
+│   └── tailwind.config.js
+├── lof-v2-db/           # InstantDB schema (push once; not a local DB server)
 ├── .gitignore         # Git ignore rules
 ├── README.md          # This file
 └── SOFTWARE_DOCUMENTATION.html  # Detailed system documentation with flowchart
@@ -140,9 +150,11 @@ LOF_V2/
 ### Prerequisites
 
 - **Python 3.8+** (Python 3.13+ recommended)
-- **Node.js 16+** (required for InstantDB Admin SDK bridge scripts)
-- **InstantDB Account** (https://www.instantdb.com)
-- **Google Sheets** with publicly accessible lottery data (or service account credentials)
+- **Node.js 16+** (InstantDB Admin SDK bridge scripts)
+- **InstantDB account** (https://www.instantdb.com) — cloud only
+- **Google Sheets** with lottery data (public CSV or service-account access)
+
+Docker is not required to run the app locally.
 
 ### Backend Setup
 
@@ -228,18 +240,22 @@ APIFY_AUTO_INGEST=true
 - **New rows appended below** the cursor are picked up on the next incremental scrape (UI timer, game select, or cron). **Rows inserted above the cursor** still require a **`full_sync`** (full CSV + cursor reset) or fixing sheet order
 - Assume a single header row on the tab named by `SHEETS_WORKSHEET_NAME` (default `Sheet1`)
 
-7. **Deploy InstantDB Schema:**
+7. **InstantDB schema (first time or after schema edits only):**
 
-Navigate to the `lof-v2-db` directory and deploy the schema:
+InstantDB is already online. `npm run dev` in `lof-v2-db` **pushes schema**, it does not start a database.
+
 ```bash
 cd ../lof-v2-db
 npm install
 npm run dev
 ```
 
-This deploys the database schema and permissions required for the app to function.
+Skip this on later days if the Instant app already has the lottery schema.
 
 8. **Run FastAPI server:**
+
+On Windows, if `pip` or `uvicorn` fails with `aswMonFltProxy` / `SSLKEYLOGFILE`, Avast is intercepting TLS. In that PowerShell session run `$env:SSLKEYLOGFILE = $null` first.
+
 ```bash
 uvicorn app:app --host 0.0.0.0 --port 5000 --reload
 ```
@@ -267,9 +283,26 @@ npm run dev
 
 The frontend will be available at `http://localhost:3000` (port set in `vite.config.js`)
 
-**Note:** The frontend communicates exclusively with the backend API. No InstantDB SDK or frontend `.env` file is required.
+**Note:** The frontend talks only to the backend (`/api` is proxied to `http://localhost:5000` in `vite.config.js`). No InstantDB SDK and no frontend `.env` file.
 
-## 🚀 Deployment to Google Cloud Platform
+## Site pages, SEO, and AdSense
+
+Production hostname: **bayanwin.net**.
+
+| Path | Role | AdSense script |
+|---|---|---|
+| `/` | Results, ticket check, 7 models | Off (tool / first screen) |
+| `/blog`, `/blog/…` | Long-form posts | On |
+| `/about`, `/methodology`, `/responsible-play` | Editorial | On |
+| `/privacy`, `/terms`, `/contact`, 404 | Legal / utility | Off |
+
+Allow-list: `frontend/src/constants/adsense.js` (`isAdSenseAllowedPath`). `ConditionalAdSense` loads auto-ads only on those routes and tears the script down when you leave them.
+
+`frontend/public/ads.txt` must match publisher `ca-pub-5394062342441330`. Cookie banner is for consent; the loader itself is not gated on consent.
+
+AdSense reviews **the live domain**, not `localhost`. If Google shows **Needs attention** and a review cooldown (for example until 10 Oct 2026), wait for that date, then **Sites → bayanwin.net → Request review**. Do not delete the site and re-add it.
+
+## Deployment to Google Cloud Platform
 
 The application is deployed on **Google Cloud Run** for production use. For complete deployment documentation, see:
 
@@ -279,7 +312,7 @@ The application is deployed on **Google Cloud Run** for production use. For comp
 ### Quick Deployment Overview
 
 **Deployed Services:**
-- **Frontend**: React app on Cloud Run (e.g. `https://lof-frontend-xxxxx.asia-southeast1.run.app` or a [custom domain](https://cloud.google.com/run/docs/mapping-custom-domains))
+- **Frontend**: React app on Cloud Run, custom domain **[bayanwin.net](https://bayanwin.net)** (or a `*.run.app` URL)
 - **Backend**: FastAPI API on Cloud Run (same region as the frontend; production has used **`asia-southeast1`**)
 - **Database**: InstantDB (cloud-hosted, no deployment needed)
 
@@ -337,7 +370,7 @@ The `.env` file in the `backend` directory should contain:
 - InstantDB credentials are required for backend to function
 - Without service-account credentials (`GOOGLE_SERVICE_ACCOUNT_FILE` locally or `GOOGLE_SERVICE_ACCOUNT_JSON` on Cloud Run), Google Sheets are accessed via public CSV export (full download per scrape path)
 - Node.js and `@instantdb/admin` are required for saving data
-- No PostgreSQL connection string needed - InstantDB handles everything!
+- No PostgreSQL connection string. InstantDB is the database.
 
 ## Apify (optional ingest)
 
@@ -404,33 +437,31 @@ Downstream **Miro**, graphs (co-occurrence, transitions), and statistics **autom
 
 ### Getting Started
 
-1. **Deploy InstantDB schema** (run `npm run dev` in `lof-v2-db` directory)
-2. **Start the backend server** (port 5000)
-3. **Start the frontend development server** (port 5173)
-4. **Open browser** to `http://localhost:3000`
+1. Confirm InstantDB credentials in `backend/.env` (schema already on the Instant app, or push once from `lof-v2-db`)
+2. Start the backend (`uvicorn` on port **5000**)
+3. Start the frontend (`npm run dev` on port **3000**)
+4. Open `http://localhost:3000`
 
 ### Workflow
 
-1. **Select a Game** from the game selector
-   - Automatically scrapes new data from Google Sheets
-   - Validates and saves new results to InstantDB (skips duplicates)
-   - Auto-calculates accuracy for matching predictions and results
+1. **Select a game**
+   - Incremental scrape from Google Sheets
+   - New rows saved to InstantDB (duplicates skipped)
+   - Accuracy updated when a draw matches a stored pick
+   - Check six numbers against history with the ticket checker
 
-2. **Generate Predictions** by clicking "⚡ Generate Predictions"
+2. **Generate predictions** (Run all 7 models)
    - System fetches historical data from InstantDB
    - All six core ML models train and predict (thread pool with per-model timeouts)
    - **Miro** runs afterward (LLM swarm synthesis, ~2 API calls, server timeout up to ~180s) when enabled and `LLM_API_KEY` is set
    - Predictions appear in the UI; all picks including Miro are saved to InstantDB
    - Background process matches predictions to results and calculates accuracy
 
-3. **View Results & Analysis**
-   - **Predictions Display**: Core models in a grid; **Miro — LLM synthesis** in a separate panel below
-   - **Historical Results**: Browse past lottery results with pagination
-   - **Statistics Panel**: View hot/cold/overdue numbers and frequency analysis
-   - **Error Distance Analysis**: Track prediction accuracy with detailed metrics
-   - **Gaussian Distribution**: Visualize sum/product distributions with scatter plots
-     - Highlights draws with winners
-     - Statistical analysis of number patterns
+3. **View results and analysis**
+   - Core models in a grid; **Miro** in its own panel
+   - Latest draws board and paginated history
+   - Hot / cold / overdue stats, error-distance, Gaussian scatter, D3 graphs
+   - Editorial routes: `/blog`, `/about`, `/methodology`, `/responsible-play`
 
 4. **DRL Learning Loop** (Automatic)
    - DRL agent receives feedback from accuracy calculations
@@ -496,25 +527,21 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 - **Node.js** - Bridge scripts for InstantDB Admin SDK writes
 
 **Frontend:**
-- **React 18** - Modern UI library with hooks
-- **Vite** - Fast build tool and dev server
-- **Tailwind CSS** - Utility-first CSS framework
-- **Axios** - HTTP client for API communication
-- **D3.js** - Co-occurrence, cross-draw transition, and hot-band Sankey views
-- **Recharts** - Chart library for data visualization
-- **React Router** - Client-side routing
+- **React 18** + **Vite** (dev port 3000) + **React Router**
+- **Tailwind CSS** + design tokens in `tailwind.config.js`
+- **GSAP** (ScrollTrigger, ScrollSmoother, SplitText, DrawSVG)
+- **Axios**, **D3.js**, **Recharts**
+- **react-helmet-async** for per-route SEO
 
-## 🎨 Design System
+## Design system (code)
 
-### Colors
-- **Electric Blue** (`#3498DB`): Primary actions, headers, accents
-- **Bright Orange** (`#E67E22`): CTAs, number balls, highlights
-- **Charcoal Black** (`#2C3E50`): Background, dark elements
-- **Silver** (`#BDC3C7`): Borders, subtle accents
+See `.claude/skills/bayanwin-design/SKILL.md`. Do not put raw hex in JSX; use Tailwind tokens.
 
-### Typography
-- **BayanWin Title**: Montserrat Bold (Google Fonts)
-- **Body**: Inter, system fonts
+- Surfaces: `charcoal-900` page, `charcoal-800` cards
+- Interactive: `electric-400` / `electric-500`
+- Primary action and balls: `orange-500` (one primary button per view)
+- Type: `font-display` (General Sans), `font-sans` (Satoshi), `font-mono` (JetBrains Mono)
+- Shared UI: `Notice`, `EmptyState`, `CardHeader`, `Spinner`, `Reveal` in `frontend/src/components/ui/`
 
 ## 📝 Important Notes
 
@@ -543,7 +570,7 @@ BayanWin follows a **three-tier architecture** with clear separation of concerns
 ### Technical Requirements
 - **Node.js Required**: Must have Node.js installed for InstantDB writes to work (Admin SDK bridge scripts)
 - **Environment Variables**: Make sure your InstantDB credentials are correct in `.env`
-- **Schema Deployment**: Must deploy InstantDB schema before first use (run `npm run dev` in `lof-v2-db`)
+- **Schema**: Push InstantDB schema once (`npm run dev` in `lof-v2-db`). Not needed every local run.
 - **Ports**: 
   - Frontend: Vite dev server (port 3000; see `frontend/vite.config.js`)
   - Backend: FastAPI/Uvicorn (port 5000)
@@ -588,18 +615,19 @@ MIT License
 
 ## 🔄 System Workflow Summary
 
-1. **User selects game** → Auto-scrapes data from Google Sheets; Latest Results also **polls** incrementally on a timer and when the tab is focused. **Production:** Cloud Scheduler can call `/api/cron/ingest-sheets` so data stays fresh without visitors.
-2. **Data validation** → Saves new results to InstantDB (skips duplicates)
-3. **User generates predictions** → System fetches historical data
-4. **ML models train & predict** → Six core models in parallel; **Miro** (LLM) may follow
-5. **Predictions saved** → All picks including **Miro** stored in InstantDB
-6. **Accuracy calculated** → Auto-matched with results when available
-7. **DRL learning loop** → Agent improves through feedback
-8. **Results displayed** → Real-time updates on frontend with statistics
+1. **User selects game** → Incremental Sheets scrape; latest-draws UI also polls (timer + tab focus). Production: Cloud Scheduler → `/api/cron/ingest-sheets`
+2. **Data validation** → New rows in InstantDB (duplicates skipped)
+3. **Ticket check (optional)** → Six numbers compared to stored draws
+4. **User runs models** → History from InstantDB
+5. **ML + Miro** → Six core models in parallel; Miro if enabled
+6. **Picks saved** → Including Miro
+7. **Accuracy** → Matched when a new result lands
+8. **DRL** → Learns from accuracy records
+9. **UI** → Home dashboard plus blog / methodology pages (AdSense only on editorial routes)
 
 ## Contributing
 
-Contributions are welcome! If you'd like to improve this project, fix bugs, or add new features, feel free to fork the repository, make your changes, and submit a pull request. Your efforts will help make this trading application even better!
+Contributions are welcome. Fork the repo, make your changes, and open a pull request.
 
 If you found this project helpful or learned something new from it, you can support the development with just a cup of coffee ☕. It's always appreciated and keeps the ideas flowing!
 
