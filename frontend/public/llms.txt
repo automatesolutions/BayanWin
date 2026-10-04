@@ -1,0 +1,30 @@
+# BayanWin
+
+> BayanWin is a free statistical analysis site for Philippine PCSO lotto draws. It covers five pick-6 games (Lotto 6/42, Mega Lotto 6/45, Super Lotto 6/49, Grand Lotto 6/55, Ultra Lotto 6/58) and runs their draw history through seven models. Every draw is random, and no model changes the odds. BayanWin is for education and entertainment, for players 18 and over, and is not affiliated with PCSO.
+
+Key facts:
+- Jackpot odds: 6/42 is 1 in 5,245,786; 6/45 is 1 in 8,145,060; 6/49 is 1 in 13,983,816; 6/55 is 1 in 28,989,675; 6/58 is 1 in 40,475,358.
+- Results sync from PCSO draws every 90 seconds.
+- Models: Markov chains, NashHotFilter (game theory), deep reinforcement learning, XGBoost, Random Forest, normal distribution analysis, and Miro (a language model that reads the other six and writes one final line).
+- Free, no sign-up. Contact: sycat0378@gmail.com
+
+## Guides
+
+- [Methodology](https://bayanwin.net/methodology): data sources, each model's assumptions, update cadence, and limits
+- [About BayanWin](https://bayanwin.net/about): what the platform does and how the statistics fit together
+- [Responsible play](https://bayanwin.net/responsible-play): budget limits and no-guarantee guidance for players in the Philippines
+
+## Blog
+
+- [PCSO 6/58 results analysis](https://bayanwin.net/blog/pcso-658-results-analysis): Ultra Lotto 6/58 frequency, gap, and pattern reading
+- [PCSO 6/49 results analysis](https://bayanwin.net/blog/pcso-649-results-analysis): Super Lotto 6/49 transition, gap, and error-distance context
+- [Markov chains](https://bayanwin.net/blog/markov-chains-lottery): memoryless systems, from drunkard's walks to PageRank, applied to draw sequences
+- [NashHotFilter](https://bayanwin.net/blog/nash-hotfilter): John Nash's equilibrium ideas and the hot/cold number filter
+- [Deep reinforcement learning](https://bayanwin.net/blog/deep-reinforcement-learning): how agents learn from reward, from Atari to AlphaGo
+- [Miro prediction](https://bayanwin.net/blog/miro-prediction): the language model synthesis layer and the MiroFish idea
+
+## Optional
+
+- [Privacy policy](https://bayanwin.net/privacy)
+- [Terms of use](https://bayanwin.net/terms)
+- [Contact](https://bayanwin.net/contact)

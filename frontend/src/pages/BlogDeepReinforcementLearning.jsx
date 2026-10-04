@@ -1,15 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 
 function BlogDeepReinforcementLearning() {
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = 'Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph';
-    return () => {
-      document.title = prevTitle;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -34,6 +27,7 @@ function BlogDeepReinforcementLearning() {
             reinforcement learning. Now, add the power of deep neural networks, and you get Deep Reinforcement Learning
             (Deep RL)-a field that is reshaping AI.
           </p>
+          <ArticleMeta />
         </header>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">

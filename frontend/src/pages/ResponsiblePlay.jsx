@@ -1,15 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 
 function ResponsiblePlay() {
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = 'Responsible Play Guide — Lottery Safety Philippines | BayanWin';
-    return () => {
-      document.title = prevTitle;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -28,6 +21,7 @@ function ResponsiblePlay() {
             moderate, and legally compliant use of lottery products. This page outlines our responsible play
             principles and provides guidance for users in the Philippines.
           </p>
+          <ArticleMeta />
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="rp-understanding">

@@ -1,17 +1,9 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 
 const CONTACT_EMAIL = 'sycat0378@gmail.com';
 
 function Contact() {
-  useEffect(() => {
-    const prev = document.title;
-    document.title = 'Contact BayanWin | PCSO Lottery Analysis Philippines';
-    return () => {
-      document.title = prev;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-2xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">

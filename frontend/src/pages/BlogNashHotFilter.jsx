@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 import posterImg from '../../assets/nash/A_Beautiful_Mind_Poster.jpg';
 import gifSmart from '../../assets/nash/smart-beautiful-mind.gif';
 import gifDiamond from '../../assets/nash/cardiachill-diamondhands.gif';
@@ -31,11 +32,6 @@ function MediaAside() {
 }
 
 function BlogNashHotFilter() {
-  useEffect(() => {
-    document.title = 'NashHotFilter: Game Theory Lottery Analysis Philippines | BayanWin';
-    return () => {};
-  }, []);
-
   return (
     <main id="main" className="page max-w-6xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -61,6 +57,7 @@ function BlogNashHotFilter() {
               2001 film as popular storytelling (not a documentary), then connects why that story matters to how we talk
               about "balance" in prediction tools built on random draws.
             </p>
+            <ArticleMeta />
           </header>
 
           <div className="rounded-lg bg-amber-950/30 border border-amber-500/20 px-4 py-3 text-xs text-amber-100/90">

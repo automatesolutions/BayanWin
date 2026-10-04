@@ -7,6 +7,11 @@ export default defineConfig({
   resolve: {
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
+  // Prerender build (src/entry-server.jsx): bundle packages whose ESM entry
+  // Node can't import directly (react-icons uses directory imports).
+  ssr: {
+    noExternal: ['react-icons', 'gsap'],
+  },
   server: {
     port: 3000,
     proxy: {

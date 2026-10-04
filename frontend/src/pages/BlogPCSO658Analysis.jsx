@@ -1,15 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 
 function BlogPCSO658Analysis() {
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = 'PCSO 6/58 Ultra Lotto Results Analysis Philippines | BayanWin';
-    return () => {
-      document.title = prevTitle;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -31,7 +24,7 @@ function BlogPCSO658Analysis() {
             This guide explains how to read PCSO Ultra Lotto 6/58 historical draw behavior using frequency, gap, and
             co-occurrence views. It is an educational analysis page, not a guaranteed-win system.
           </p>
-          <p className="text-xs text-slate-500 mt-3">Last updated: May 2026</p>
+          <ArticleMeta />
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">

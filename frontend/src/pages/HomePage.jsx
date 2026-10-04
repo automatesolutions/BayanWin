@@ -14,6 +14,7 @@ import MarkovGraph from '../components/MarkovGraph';
 import CouncilPanel from '../components/CouncilPanel';
 import ParticleReveal from '../components/canvasui/ParticleReveal';
 import Notice from '../components/ui/Notice';
+import { HOME_FAQ } from '../seo/faq';
 import Reveal from '../components/ui/Reveal';
 import ScrollWords from '../components/motion/ScrollWords';
 import { scrollToElement } from '../components/motion/SmoothScroll';
@@ -51,10 +52,6 @@ const METHODS = [
 ];
 
 function HomePage() {
-  useEffect(() => {
-    document.title = 'BayanWin - Algorithmic Lottery Prediction Philippines | PCSO Analysis';
-  }, []);
-
   const [selectedGame, setSelectedGame] = useState(null);
   const [predictions, setPredictions] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -368,7 +365,27 @@ function HomePage() {
           </div>
         </section>
 
-        {/* ── Screen 7: disclaimer ── */}
+        {/* ── Screen 7: FAQ (same data as the FAQPage schema in seo/routeSeo.js) ── */}
+        <section className="border-t border-white/[0.06] py-16 sm:py-24" aria-labelledby="faq-heading">
+          <div className="container mx-auto grid gap-10 px-4 sm:px-6 lg:grid-cols-[1fr_2fr]">
+            <Reveal className="space-y-3">
+              <h2 id="faq-heading" className="section-title">
+                Questions about BayanWin and PCSO odds
+              </h2>
+              <p className="lede">Short answers. The methodology page has the long ones.</p>
+            </Reveal>
+            <Reveal className="divide-y divide-white/[0.06] border-y border-white/[0.06]">
+              {HOME_FAQ.map(({ q, a }) => (
+                <div key={q} data-reveal className="py-5">
+                  <h3 className="font-display text-base font-semibold text-white">{q}</h3>
+                  <p className="mt-2 max-w-prose text-sm leading-relaxed text-silver-400">{a}</p>
+                </div>
+              ))}
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ── Screen 8: disclaimer ── */}
         <section className="container mx-auto px-4 pb-20 sm:px-6" aria-label="Important notice">
           <div className="flex flex-col gap-4 rounded-card border border-amber-400/20 bg-amber-500/[0.05] p-6 sm:flex-row sm:items-start">
             <TbAlertTriangle className="h-6 w-6 shrink-0 text-amber-300" aria-hidden />

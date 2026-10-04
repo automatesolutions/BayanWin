@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 import { TbArrowRight, TbClock } from 'react-icons/tb';
 import Reveal from '../components/ui/Reveal';
+import { getSeoForPath } from '../seo/routeSeo';
 
 const POSTS = [
   {
@@ -58,13 +59,6 @@ const POSTS = [
 ];
 
 function BlogIndex() {
-  useEffect(() => {
-    document.title = 'Lottery Analytics Blog - Algorithmic PCSO Analysis Philippines | BayanWin';
-    return () => {
-      document.title = 'BayanWin - Algorithmic Lottery Prediction Philippines | PCSO Analysis';
-    };
-  }, []);
-
   const [featured, ...rest] = POSTS;
 
   return (
@@ -99,7 +93,11 @@ function BlogIndex() {
   );
 }
 
+const formatDate = (iso) =>
+  new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+
 function PostCard({ post, featured = false }) {
+  const modified = getSeoForPath(`/blog/${post.slug}`).article?.modified;
   return (
     <article
       data-reveal
@@ -114,6 +112,11 @@ function PostCard({ post, featured = false }) {
             <span className="inline-flex items-center gap-1 text-xs text-silver-500">
               <TbClock className="h-3.5 w-3.5" aria-hidden />
               {post.readMins} min read
+            </span>
+          )}
+          {modified && (
+            <span className="text-xs text-silver-500">
+              Updated <time dateTime={modified}>{formatDate(modified)}</time>
             </span>
           )}
         </div>

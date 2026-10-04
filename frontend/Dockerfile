@@ -16,8 +16,9 @@ COPY . .
 ARG VITE_API_URL=http://localhost:5000
 ENV VITE_API_URL=$VITE_API_URL
 
-# Build the app (npx avoids missing +x on node_modules/.bin in some Cloud Build layers)
-RUN npx vite build
+# Build the app and prerender every route to static HTML
+# (npx avoids missing +x on node_modules/.bin in some Cloud Build layers)
+RUN npx vite build && npx vite build --ssr src/entry-server.jsx --outDir dist-ssr && node scripts/prerender.mjs
 
 # Production stage
 FROM nginx:alpine

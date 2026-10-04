@@ -1,15 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 
 function AboutBayanWin() {
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = 'About BayanWin - AI Lottery Analytics for PCSO Philippines';
-    return () => {
-      document.title = prevTitle;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -26,7 +19,7 @@ function AboutBayanWin() {
           <p className="text-slate-400 text-sm leading-relaxed">
             What the platform does, how historical data is used, and how the statistics and models fit together.
           </p>
-          <p className="text-xs text-slate-500 mt-3">Last updated: May 9, 2026</p>
+          <ArticleMeta />
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="overview-heading">

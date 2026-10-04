@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 
 function Methodology() {
   return (
@@ -20,7 +21,7 @@ function Methodology() {
             historical draw sequences, applies six distinct analytical models, and presents results
             responsibly for educational use.
           </p>
-          <p className="text-xs text-slate-500">Last updated: May 2026</p>
+          <ArticleMeta />
         </header>
 
         {/* Data Sources */}

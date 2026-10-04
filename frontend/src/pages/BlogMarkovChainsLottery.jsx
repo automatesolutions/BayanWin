@@ -1,15 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 
 function BlogMarkovChainsLottery() {
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = "The Fascinating World of Markov Chains: From Drunkard’s Walks to Google’s Algorithms";
-    return () => {
-      document.title = prevTitle;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -34,6 +27,7 @@ function BlogMarkovChainsLottery() {
             back, with equal probability. He doesn&apos;t remember where he came from-he only knows where he is right now.
             This simple, quirky scenario is actually one of the most famous illustrations of a Markov chain.
           </p>
+          <ArticleMeta />
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">

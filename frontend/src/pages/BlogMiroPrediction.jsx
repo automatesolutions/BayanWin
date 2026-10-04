@@ -1,5 +1,6 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 import miroLogo from '../../assets/mirofish/MiroFish_logo_compressed.jpeg';
 import miroVideo from '../../assets/mirofish/video_91a48dcd_1777203629133.mp4';
 import miroOpenArt from '../../assets/mirofish/openart-image_V5EFsGse_1777203395123_raw.jpg';
@@ -56,11 +57,6 @@ function MediaAside() {
 }
 
 function BlogMiroPrediction() {
-  useEffect(() => {
-    document.title = 'Blog: Miro prediction & MiroFish | BayanWin';
-    return () => {};
-  }, []);
-
   return (
     <main id="main" className="page max-w-6xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -88,6 +84,7 @@ function BlogMiroPrediction() {
               world, and rehearsing futures in a digital sandbox. They are <strong className="text-slate-200">not the same codebase</strong>;
               the link is conceptual and cultural.
             </p>
+            <ArticleMeta />
           </header>
 
           <section className="rounded-lg bg-cyan-950/25 border border-cyan-500/20 px-4 py-3 text-xs text-cyan-100/90">

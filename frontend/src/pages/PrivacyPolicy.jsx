@@ -1,17 +1,9 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
 
 const CONTACT_EMAIL = 'sycat0378@gmail.com';
 
 function PrivacyPolicy() {
-  useEffect(() => {
-    const prev = document.title;
-    document.title = 'Privacy Policy | BayanWin';
-    return () => {
-      document.title = prev;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">

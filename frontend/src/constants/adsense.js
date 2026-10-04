@@ -44,12 +44,13 @@ export function teardownAdSenseDom() {
 }
 
 /**
- * Paths where AdSense may load. Includes all content-rich editorial and informational
- * pages. Homepage is included since it now has substantial publisher content.
+ * Paths where AdSense may load: long-form editorial pages only. The homepage is
+ * left out because its first screen is the prediction tool (a functional screen),
+ * and Google does not allow ads on screens used for navigation or tools. Legal,
+ * contact and 404 pages are out for the same reason.
  */
 export function isAdSenseAllowedPath(pathname) {
   if (!pathname) return false;
-  if (pathname === '/') return true;
   if (pathname === '/blog' || pathname.startsWith('/blog/')) return true;
   if (pathname === '/about' || pathname === '/methodology') return true;
   if (pathname === '/responsible-play') return true;

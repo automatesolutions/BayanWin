@@ -13,6 +13,7 @@ const NAV = [
 const WEB_APPS = [
   { href: 'https://gods-eye-predictor-246621344960.asia-southeast1.run.app/', label: "God's Eye Predictor" },
   { href: 'https://randomness-web-rxl6tsackq-as.a.run.app/', label: 'Randomness' },
+  { href: 'https://swerte3-510511.web.app/', label: 'Swerte3' },
 ];
 
 const appLinkClass =

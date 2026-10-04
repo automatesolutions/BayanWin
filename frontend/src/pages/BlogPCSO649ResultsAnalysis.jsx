@@ -1,15 +1,8 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Link } from 'react-router-dom';
+import ArticleMeta from '../components/ArticleMeta';
 
 function BlogPCSO649ResultsAnalysis() {
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = 'PCSO 6/49 Super Lotto Results Analysis Philippines | BayanWin';
-    return () => {
-      document.title = prevTitle;
-    };
-  }, []);
-
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -31,7 +24,7 @@ function BlogPCSO649ResultsAnalysis() {
             This page explains how to read Super Lotto 6/49 draw history in the Philippines using frequency, transition,
             and error-distance lenses. The purpose is educational analysis with transparent limitations.
           </p>
-          <p className="text-xs text-slate-500 mt-3">Last updated: May 2026</p>
+          <ArticleMeta />
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">

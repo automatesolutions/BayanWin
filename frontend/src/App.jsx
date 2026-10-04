@@ -33,7 +33,6 @@ function App() {
   return (
     <>
       <SeoHead {...seo} />
-      <ConditionalAdSense />
       {/* Fixed UI stays outside the smooth-scroll layer, which is transformed. */}
       <Header />
       <SmoothScroll>
@@ -45,6 +44,8 @@ function App() {
             </div>
           }
         >
+          {/* Inside Suspense so ads never load over the loading spinner, only once the page has rendered. */}
+          <ConditionalAdSense />
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/about" element={<AboutBayanWin />} />
