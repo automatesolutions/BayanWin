@@ -1,64 +1,29 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import ArticleMeta from '../components/ArticleMeta';
-import miroLogo from '../../assets/mirofish/MiroFish_logo_compressed.jpeg';
-import miroVideo from '../../assets/mirofish/video_91a48dcd_1777203629133.mp4';
-import miroOpenArt from '../../assets/mirofish/openart-image_V5EFsGse_1777203395123_raw.jpg';
-import miroWebp from '../../assets/mirofish/1_K7nTNtUY5kk2StvwbVCFQg.webp';
-import miroScreenshot from '../../assets/mirofish/运行截图2.png';
 
-function MediaAside() {
-  return (
-    <aside className="lg:sticky lg:top-24 space-y-6" aria-label="Article media">
-      <figure className="rounded-xl overflow-hidden border border-cyan-500/35 bg-black/50 shadow-[0_0_36px_-8px_rgba(34,211,238,0.35)]">
-        <img src={miroLogo} alt="MiroFish logo" className="w-full h-auto object-cover" />
-        <figcaption className="text-[11px] text-slate-500 px-3 py-2 bg-black/60 font-mono">
-          MiroFish branding (community project)
-        </figcaption>
-      </figure>
-
-      <figure className="rounded-xl overflow-hidden border border-slate-600/60 bg-slate-900/80 p-2">
-        <video className="w-full rounded-lg bg-black" controls playsInline preload="metadata">
-          <source src={miroVideo} type="video/mp4" />
-          Your browser does not support the video tag.
-        </video>
-        <figcaption className="text-[11px] text-slate-500 mt-2 px-1 leading-snug">
-          Clip from the asset bundle—walkthrough / demo energy around the MiroFish narrative.
-        </figcaption>
-      </figure>
-
-      <figure className="rounded-xl overflow-hidden border border-violet-500/25 bg-gradient-to-b from-slate-900 to-black p-1">
-        <img src={miroOpenArt} alt="MiroFish concept illustration" className="w-full rounded-lg object-cover" />
-        <figcaption className="text-[11px] text-slate-500 mt-2 px-2">Concept art–style visual from the MiroFish asset set.</figcaption>
-      </figure>
-
-      <figure className="rounded-xl overflow-hidden border border-slate-600/50 bg-black/40 p-1">
-        <img src={miroWebp} alt="MiroFish swarm intelligence diagram" className="w-full rounded-lg" />
-        <figcaption className="text-[11px] text-slate-500 mt-2 px-2">
-          Swarm / multi-agent metaphor—many independent actors interacting in a shared space.
-        </figcaption>
-      </figure>
-
-      <figure className="rounded-xl overflow-hidden border border-cyan-500/20 bg-slate-900/60 p-1">
-        <img src={miroScreenshot} alt="MiroFish interface screenshot" className="w-full rounded-lg border border-white/5" />
-        <figcaption className="text-[11px] text-slate-500 mt-2 px-2">UI screenshot from the project materials (运行截图).</figcaption>
-      </figure>
-
-      <a
-        href="https://666ghj.github.io/mirofish-demo/"
-        target="_blank"
-        rel="noopener noreferrer"
-        className="block rounded-xl border border-cyan-400/40 bg-cyan-950/30 px-4 py-3 text-center text-sm font-medium text-cyan-300 hover:bg-cyan-900/40 hover:text-cyan-200 transition-colors"
-      >
-        Open live demo (mirofish-demo) ↗
-      </a>
-    </aside>
-  );
-}
+const CONTEXT_ITEMS = [
+  ['Game rules', 'the number range and how many numbers to pick, so every answer can be checked against the game.'],
+  ['The six base picks', 'the lines from XGBoost, Decision Tree, Markov Chain, Anomaly Detection, NashHotFilter, and DRL.'],
+  [
+    'Model overlap',
+    'how many models chose each number (top 20), and the 10 model pairs whose picks share the most numbers.',
+  ],
+  [
+    'Past error by model',
+    'how far each model’s earlier picks landed from the real draws. A lower error distance means closer.',
+  ],
+  ['Hot, cold, and overdue numbers', 'up to 15 overdue numbers, each with the days since it was last drawn.'],
+  ['Sum and product bands', 'the usual range of the six-number sum and product in past draws.'],
+  [
+    'Pair and transition graphs',
+    'the 45 strongest co-occurrence pairs and the 45 strongest draw-to-draw transitions, from up to 2,000 draws.',
+  ],
+];
 
 function BlogMiroPrediction() {
   return (
-    <main id="main" className="page max-w-6xl">
+    <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
         <Link to="/" className="link">
           Home
@@ -71,149 +36,170 @@ function BlogMiroPrediction() {
         <span className="text-slate-300">Miro prediction</span>
       </nav>
 
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] lg:gap-10 xl:gap-12">
-        <article className="article min-w-0 space-y-8 text-slate-300">
-          <header className="space-y-3">
-            <h1 className="text-3xl sm:text-4xl font-bold text-white">
-              Miro prediction: BayanWin’s <em>Miro</em> and the MiroFish idea
-            </h1>
-            <p className="text-slate-400 max-w-3xl">
-              This note connects the <strong className="text-slate-200">Miro</strong> layer inside BayanWin—a multi-step LLM
-              workflow that synthesizes numeric model outputs—to the viral <strong className="text-slate-200">MiroFish</strong>{' '}
-              narrative: a “next-generation” prediction story built around multi-agent simulation, seed signals from the real
-              world, and rehearsing futures in a digital sandbox. They are <strong className="text-slate-200">not the same codebase</strong>;
-              the link is conceptual and cultural.
-            </p>
-            <ArticleMeta />
-          </header>
-
-          <section className="rounded-lg bg-cyan-950/25 border border-cyan-500/20 px-4 py-3 text-xs text-cyan-100/90">
-            <strong className="text-cyan-200">Try the public demo:</strong>{' '}
-            <a
-              href="https://666ghj.github.io/mirofish-demo/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline hover:text-white"
-            >
-              https://666ghj.github.io/mirofish-demo/
-            </a>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-mirofish">
-            <h2 id="sec-mirofish" className="text-xl font-semibold text-white">
-              What people mean by “MiroFish”
-            </h2>
-            <p>
-              In online coverage and demos, <strong className="text-slate-200">MiroFish</strong> is described as a prediction
-              engine powered by <strong className="text-slate-200">multi-agent</strong> ideas: pull <em>seed information</em>{' '}
-              from reality (breaking news, policy drafts, financial signals), spin up a high-fidelity parallel digital world,
-              and let thousands of agents—with personality, memory, and behavior—interact and socially evolve. From a
-              “God’s-eye” view you inject variables, run countless simulations, and compare trajectories before deciding.
-            </p>
-            <p>
-              The pitch spans macro use (zero-risk rehearsal for policy and communications) and micro use (playful “what if”
-              endings and scenarios). Taglines in that ecosystem often boil down to:{' '}
-              <strong className="text-slate-200">rehearse the future in a sandbox, then decide</strong>—from serious forecasts
-              to imaginative play.
-            </p>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-creator">
-            <h2 id="sec-creator" className="text-xl font-semibold text-white">
-              Origin story (as circulated)
-            </h2>
-            <p>
-              Stories around the project credit a young developer—named in posts as{' '}
-              <strong className="text-slate-200">Guo Hangjiang</strong>, sometimes referred to as <strong className="text-slate-200">BaiFu</strong>—with
-              assembling an early demo in roughly <strong className="text-slate-200">ten days</strong>. Viral launch timelines
-              mention <strong className="text-slate-200">March 2026</strong> and extraordinary early attention, including figures
-              on the order of <strong className="text-slate-200">tens of millions of RMB</strong> in reported interest within a
-              short window. Treat any investment totals as <strong className="text-slate-200">unverified hype</strong> unless
-              you confirm them from primary sources—this article summarizes the narrative, not an offering memo.
-            </p>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-macro">
-            <h2 id="sec-macro" className="text-xl font-semibold text-white">
-              Macro vs micro in the MiroFish framing
-            </h2>
-            <ul className="list-disc pl-5 space-y-2">
-              <li>
-                <strong className="text-slate-200">Macro:</strong> a rehearsal lab for decision-makers—test narratives and
-                shocks before they hit the real world.
-              </li>
-              <li>
-                <strong className="text-slate-200">Micro:</strong> a creative sandbox—alternate endings, speculative fiction,
-                accessible “what if” buttons.
-              </li>
-            </ul>
-            <p>
-              The through-line is <strong className="text-slate-200">swarm intelligence as mirror</strong>: many small
-              interactions producing emergent patterns you could not script line-by-line.
-            </p>
-          </section>
-
-          <section className="space-y-4 rounded-xl border border-violet-500/25 bg-slate-800/40 px-5 py-6" aria-labelledby="sec-bayanwin">
-            <h2 id="sec-bayanwin" className="text-xl font-semibold text-white">
-              How this relates to BayanWin’s <em>Miro</em>
-            </h2>
-            <p>
-              BayanWin’s <strong className="text-slate-200">Miro</strong> is a <strong className="text-slate-200">practical LLM
-              synthesis step</strong> after six numeric models: it reads the same structured context bundle (history, overlaps,
-              errors, hot/cold snapshots, etc.) and returns a final six-number line with validation and fallbacks. There is no
-              claim of thousands of autonomous agents or a parallel world—those are <strong className="text-slate-200">MiroFish-style metaphors</strong>{' '}
-              from a different project.
-            </p>
-            <p>
-              The <em>family resemblance</em> is cultural: both tap the same 2020s imagination—{' '}
-              <strong className="text-slate-200">many voices, emergence, rehearsal, “predict anything” rhetoric</strong>. If
-              MiroFish is the cinematic wide shot, BayanWin’s Miro is a focused tool on lottery history: smaller scope, explicit
-              disclaimers, and InstantDB-backed auditability.
-            </p>
-          </section>
-
-          <section className="space-y-3 text-slate-500 text-xs border-t border-slate-600/50 pt-6" aria-labelledby="sec-disclaimer">
-            <h2 id="sec-disclaimer" className="text-sm font-semibold text-slate-400">
-              Disclaimer
-            </h2>
-            <p>
-              Lottery draws are random within their published rules; BayanWin is informational. Links to third-party demos are
-              for exploration only; we do not endorse investments or tokens. Verify any financial claims independently.
-            </p>
-          </section>
-
-          <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">
-            <h2 id="related-articles" className="text-lg font-semibold text-white">
-              Related Articles
-            </h2>
-            <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
-              <li>
-                <Link to="/blog/deep-reinforcement-learning" className="text-cyan-400 hover:text-cyan-300 underline">
-                  Deep reinforcement learning for AI lottery prediction
-                </Link>
-              </li>
-              <li>
-                <Link to="/blog/nash-hotfilter" className="text-cyan-400 hover:text-cyan-300 underline">
-                  Game theory lottery analysis (NashHotFilter)
-                </Link>
-              </li>
-              <li>
-                <Link to="/methodology" className="text-cyan-400 hover:text-cyan-300 underline">
-                  BayanWin methodology and model limitations
-                </Link>
-              </li>
-            </ul>
-          </section>
-
-          <p className="pt-2">
-            <Link to="/blog" className="text-cyan-400 hover:text-cyan-300 text-sm font-medium">
-              ← Back to Blog
-            </Link>
+      <article className="article text-slate-200 space-y-6">
+        <header>
+          <h1 className="text-3xl font-bold text-white mb-2">How Miro merges six models into one pick</h1>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            Miro is the seventh prediction on the BayanWin dashboard. It runs no statistics of its own. It reads the
+            picks of the six numeric models and the analytics behind them, then a language model proposes one
+            six-number line. This article explains each step, the checks around it, and what Miro can’t do.
           </p>
-        </article>
+          <ArticleMeta />
+        </header>
 
-        <MediaAside />
-      </div>
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Where Miro sits in the pipeline</h2>
+          <p>
+            When you run the models for a PCSO game, six numeric models run first: XGBoost, Decision Tree, Markov
+            Chain, Anomaly Detection, NashHotFilter, and Deep Reinforcement Learning (DRL). Each one returns six
+            numbers. These models often disagree, because each looks at a different part of the draw history.
+          </p>
+          <p>
+            Miro runs after them and has 180 seconds to answer. If it takes longer, or if the server has no language
+            model key, Miro returns an error message instead of a pick. The other six results stay on screen either
+            way.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">What Miro reads</h2>
+          <p>
+            Before any language model call, the server builds one bundle of data for the selected game. Every list in
+            it has a fixed cap, so the bundle stays the same size from draw to draw:
+          </p>
+          <ul className="list-disc pl-5 space-y-2">
+            {CONTEXT_ITEMS.map(([term, text]) => (
+              <li key={term}>
+                <strong className="text-slate-100">{term}:</strong> {text}
+              </li>
+            ))}
+          </ul>
+          <p>
+            Miro sees only this bundle. It has no web access, no news, and no information about the next draw, because
+            no such information exists before the draw.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Round one: six analyst voices</h2>
+          <p>
+            In the first call, the language model writes one short response for each of the six models, in a fixed
+            order. Each response has a paragraph that reacts to the other models, up to eight preferred numbers, and up
+            to three concerns. A concern can be as plain as “three of my numbers are also cold numbers.”
+          </p>
+          <p>
+            These voices are not the models running again. They are written perspectives, based on each model’s pick
+            and the shared data. The instructions say that draws are random and that no voice may claim better odds.
+            The call runs at a low temperature (0.35), so the wording stays focused but can still vary.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Round two: the chairman picks one line</h2>
+          <p>
+            The second call plays a chairman. It gets the full data bundle and all six responses from round one. It
+            must return exactly six different whole numbers inside the game’s range, plus an optional one-line reason.
+            It is told to weigh where the models disagree, the pair and transition graphs, hot, cold, and overdue
+            numbers, each model’s past error, and the sum and product bands. This call runs at an even lower temperature
+            (0.25).
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Checks and fallbacks</h2>
+          <p>
+            Language models sometimes return a duplicate number, a number outside the range, or broken data. The server
+            checks the chairman’s answer before it shows anything: six numbers, all whole, all in range, with no
+            repeats.
+          </p>
+          <ol className="list-decimal pl-5 space-y-2">
+            <li>If the answer passes, Miro shows it, sorted from low to high.</li>
+            <li>
+              If it fails, the server sends one repair request that asks only for a valid list of six numbers, at
+              temperature 0.1.
+            </li>
+            <li>
+              If the repair also fails, Miro stops using the language model. It counts how many of the six base models
+              chose each number and takes the six with the most votes. Ties go to the lower number. If fewer than six
+              numbers got votes, it fills the gaps with the lowest unused numbers.
+            </li>
+          </ol>
+          <p>
+            Because of this order, Miro always shows either a valid line or a clear error, never broken numbers.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">How Miro is scored</h2>
+          <p>
+            Each Miro line is saved with the draw date it targets, next to the other models’ picks. After the official
+            result comes in, BayanWin scores it with the same error-distance check as every other model. You can compare
+            Miro’s record with the six base models on the dashboard. The{' '}
+            <Link to="/methodology" className="link">
+              methodology page
+            </Link>{' '}
+            explains how error distance works.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">What Miro can’t do</h2>
+          <p>
+            Miro can’t see the future, and it can’t change the odds. Every PCSO draw is random. A 6/58 ticket has a 1
+            in 40,475,358 chance of matching all six numbers, whichever model picked it.
+          </p>
+          <p>
+            Language models write with confidence even when the data supports nothing. Treat the chairman’s reason as a
+            summary of the inputs, not as evidence. Two runs on the same data can also give different lines, because
+            both calls allow some variation.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Why we built it</h2>
+          <p>
+            Six disagreeing lines are hard to read. Miro gives you one merged line, and the round-one voices show where
+            the models agree and where they split. The vote fallback keeps the dashboard working when the language
+            model fails, and the saved scores show over time whether merging helps at all.
+          </p>
+          <p>
+            An earlier version of this article compared Miro with MiroFish, a separate multi-agent simulation project.
+            Miro is not related to it and uses none of its code.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300 border-t border-slate-600/50 pt-5">
+          <h2 className="text-xl font-semibold text-white">Related articles</h2>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>
+              <Link to="/blog/nash-hotfilter" className="link">
+                How NashHotFilter builds a balanced line
+              </Link>
+            </li>
+            <li>
+              <Link to="/blog/deep-reinforcement-learning" className="link">
+                Deep reinforcement learning for lottery analysis
+              </Link>
+            </li>
+            <li>
+              <Link to="/methodology" className="link">
+                BayanWin methodology and model limits
+              </Link>
+            </li>
+          </ul>
+        </section>
+
+        <p className="text-xs text-slate-500 border-t border-slate-600/50 pt-5">
+          BayanWin is not affiliated with PCSO. Lottery draws are random, and no model or language model can predict
+          them. Play only with money you can afford to lose. 18+ only.
+        </p>
+
+        <p>
+          <Link to="/blog" className="link text-sm font-medium">
+            ← Back to Blog
+          </Link>
+        </p>
+      </article>
     </main>
   );
 }

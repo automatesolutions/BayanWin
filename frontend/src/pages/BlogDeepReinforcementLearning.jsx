@@ -50,12 +50,6 @@ function BlogDeepReinforcementLearning() {
             These victories were not just about games-they proved that Deep RL could tackle problems with staggering
             complexity.
           </p>
-          <figure className="rounded-lg overflow-hidden border border-slate-600/60 bg-black/20">
-            <video src="/drl/AI_Learns_to_Walk_deep_reinforcement_learning.mp4" className="w-full h-auto" controls preload="metadata" />
-            <figcaption className="text-xs text-slate-400 px-3 py-2">
-              Deep RL in action: learning locomotion through repeated trial and feedback.
-            </figcaption>
-          </figure>
         </section>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
@@ -71,12 +65,6 @@ function BlogDeepReinforcementLearning() {
             The magic happens when deep neural networks are used to process raw, high-dimensional data-like images or
             speech-so the agent can make smart decisions without human-crafted rules.
           </p>
-          <figure className="rounded-lg overflow-hidden border border-slate-600/60 bg-black/20">
-            <img src="/drl/ai-robot.gif" alt="Animated robot learning tasks with reinforcement feedback" className="w-full h-auto" loading="lazy" />
-            <figcaption className="text-xs text-slate-400 px-3 py-2">
-              Agent loop intuition: observe, act, get reward, and improve policy.
-            </figcaption>
-          </figure>
         </section>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
@@ -88,12 +76,6 @@ function BlogDeepReinforcementLearning() {
             <li>Finance: Creating adaptive trading agents that learn from volatile markets.</li>
             <li>Transportation: Training autonomous vehicles to navigate safely in unpredictable environments.</li>
           </ul>
-          <figure className="rounded-lg overflow-hidden border border-slate-600/60 bg-black/20">
-            <video src="/drl/Robot_Control_with_Distributed_Deep_Reinforcement_Learning.mp4" className="w-full h-auto" controls preload="metadata" />
-            <figcaption className="text-xs text-slate-400 px-3 py-2">
-              Distributed Deep RL for robotics control under complex, changing conditions.
-            </figcaption>
-          </figure>
         </section>
 
         <section className="space-y-4 text-sm leading-relaxed text-slate-300">
@@ -109,12 +91,6 @@ function BlogDeepReinforcementLearning() {
             reinforcement learning (learning from demonstrations), and multi-agent systems where AIs learn to cooperate-or
             compete.
           </p>
-          <figure className="rounded-lg overflow-hidden border border-slate-600/60 bg-black/20">
-            <img src="/drl/little-guy.gif" alt="Animated Deep RL agent repeatedly improving performance" className="w-full h-auto" loading="lazy" />
-            <figcaption className="text-xs text-slate-400 px-3 py-2">
-              Iterative improvement: repeated attempts gradually produce better strategies.
-            </figcaption>
-          </figure>
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300 border-t border-slate-600/50 pt-5">

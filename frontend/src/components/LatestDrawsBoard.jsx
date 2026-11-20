@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { TbArrowRight, TbRefresh } from 'react-icons/tb';
-import { getResults } from '../services/api';
+import { getResults, subscribeToResults } from '../services/api';
 import { GAMES, GAME_ORDER } from '../utils/constants';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { nextDrawLabel } from '../utils/drawSchedule';
@@ -32,6 +32,18 @@ const LatestDrawsBoard = ({ onAnalyze }) => {
       cancelled = true;
     };
   }, [attempt]);
+
+  // A new draw was published: refresh only that game's row, without a loading state.
+  useEffect(
+    () =>
+      subscribeToResults((msg) => {
+        if (!GAMES[msg.game_type]) return;
+        getResults(msg.game_type, 1, 1)
+          .then((res) => setRows((prev) => ({ ...prev, [msg.game_type]: res.data.results?.[0] || null })))
+          .catch(() => {});
+      }),
+    []
+  );
 
   return (
     <div className="overflow-hidden rounded-card border border-white/[0.08] bg-charcoal-800/90 shadow-tech-lg">

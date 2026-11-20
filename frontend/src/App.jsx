@@ -4,7 +4,8 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import SeoHead from './components/SeoHead';
 import CookieConsentBanner from './components/CookieConsentBanner';
-import ConditionalAdSense from './components/ConditionalAdSense';
+import AutoAds from './components/AutoAds';
+import { isAdEligiblePath } from './constants/adsense';
 import { getSeoForPath } from './seo/routeSeo';
 import Spinner from './components/ui/Spinner';
 import SmoothScroll from './components/motion/SmoothScroll';
@@ -45,7 +46,7 @@ function App() {
           }
         >
           {/* Inside Suspense so ads never load over the loading spinner, only once the page has rendered. */}
-          <ConditionalAdSense />
+          <AutoAds hasPublisherContent={isAdEligiblePath(location.pathname)} />
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/about" element={<AboutBayanWin />} />

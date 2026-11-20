@@ -13,8 +13,10 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Create Instant App',
-  description: 'Instant DB Starter App',
+  title: 'BayanWin database admin',
+  description: 'Internal InstantDB schema tool for BayanWin. Not a public page.',
+  // Internal tool: keep it out of search results.
+  robots: { index: false, follow: false },
 };
 
 export default function RootLayout({

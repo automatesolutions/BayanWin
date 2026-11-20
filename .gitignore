@@ -63,3 +63,6 @@ Thumbs.db
 # Note: lof-v2-db/ is now included in the repository for Vercel deployment
 # .env.local files are still ignored (see line 32)
 
+
+# Local InstantDB backups (made before data cleanups)
+backups/

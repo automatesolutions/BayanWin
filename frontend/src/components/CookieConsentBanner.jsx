@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { CONSENT_STORAGE_KEY } from '../utils/cookieConsent';
+import { CONSENT_STORAGE_KEY, OPEN_CONSENT_EVENT } from '../utils/cookieConsent';
 
 const readConsent = () => {
   try {
@@ -28,6 +28,9 @@ const CookieConsentBanner = () => {
     if (!current) {
       setVisible(true);
     }
+    const open = () => setVisible(true);
+    window.addEventListener(OPEN_CONSENT_EVENT, open);
+    return () => window.removeEventListener(OPEN_CONSENT_EVENT, open);
   }, []);
 
   const actions = useMemo(
@@ -38,10 +41,6 @@ const CookieConsentBanner = () => {
       },
       rejectOptional: () => {
         saveConsent({ necessary: true, analytics: false, personalization: false });
-        setVisible(false);
-      },
-      analyticsOnly: () => {
-        saveConsent({ necessary: true, analytics: true, personalization: false });
         setVisible(false);
       },
     }),
@@ -58,7 +57,7 @@ const CookieConsentBanner = () => {
     >
       <div className="container mx-auto flex flex-col gap-4 rounded-2xl border border-white/10 bg-charcoal-700 p-4 shadow-[0_-8px_40px_-12px_rgba(0,0,0,0.7)] sm:p-5 lg:flex-row lg:items-center lg:justify-between">
         <p className="max-w-3xl text-sm leading-relaxed text-silver-300">
-          We use necessary cookies to run BayanWin, plus optional ones for analytics and ad personalization. You can
+          We use necessary cookies to run BayanWin, plus optional ones for ad personalization. You can
           change this any time. See our{' '}
           <Link to="/privacy" className="link">
             Privacy Policy
@@ -68,9 +67,6 @@ const CookieConsentBanner = () => {
         <div className="grid grid-cols-1 gap-2 sm:flex sm:shrink-0">
           <button type="button" onClick={actions.rejectOptional} className="btn-ghost">
             Reject optional
-          </button>
-          <button type="button" onClick={actions.analyticsOnly} className="btn-secondary">
-            Analytics only
           </button>
           <button type="button" onClick={actions.acceptAll} className="btn-primary">
             Accept all

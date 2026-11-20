@@ -14,3 +14,6 @@ google-auth>=2.23.0
 apify-client>=1.7.0
 openai>=1.0.0
 zep-cloud>=3.13.0
+
+# Time zone data for Jev draw schedules (zoneinfo) on slim images and Windows
+tzdata

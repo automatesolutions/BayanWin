@@ -21,7 +21,7 @@ Key facts:
 - [Markov chains](https://bayanwin.net/blog/markov-chains-lottery): memoryless systems, from drunkard's walks to PageRank, applied to draw sequences
 - [NashHotFilter](https://bayanwin.net/blog/nash-hotfilter): John Nash's equilibrium ideas and the hot/cold number filter
 - [Deep reinforcement learning](https://bayanwin.net/blog/deep-reinforcement-learning): how agents learn from reward, from Atari to AlphaGo
-- [Miro prediction](https://bayanwin.net/blog/miro-prediction): the language model synthesis layer and the MiroFish idea
+- [Miro prediction](https://bayanwin.net/blog/miro-prediction): how the Miro language model step merges six model picks into one line
 
 ## Optional
 

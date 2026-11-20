@@ -125,6 +125,7 @@ def run_council_report(
     game_type: str,
     predictions: Dict[str, Any],
     memory_context: str = "",
+    model: Optional[str] = None,
 ) -> Dict[str, Any]:
     if not Config.LLM_API_KEY:
         raise ValueError("LLM_API_KEY is not configured")
@@ -133,7 +134,7 @@ def run_council_report(
     hist = historical_model_stats(game_type)
     snap = stats_snapshot(game_type)
 
-    llm = LLMClient()
+    llm = LLMClient(model=model)
 
     agent_payload = {
         "game": Config.GAMES.get(game_type, {}),

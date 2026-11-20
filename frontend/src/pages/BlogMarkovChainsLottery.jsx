@@ -51,17 +51,6 @@ function BlogMarkovChainsLottery() {
             Think of it like playing a board game where the dice roll determines your next move. It doesn&apos;t matter how
             you got to your current square-only where you are now.
           </p>
-          <figure className="rounded-lg overflow-hidden border border-slate-600/60 bg-black/20">
-            <img
-              src="/markov_chain/markov-chain-detected-markov.gif"
-              alt="Animated visualization of Markov chain state transitions"
-              className="w-full h-auto"
-              loading="lazy"
-            />
-            <figcaption className="text-xs text-slate-400 px-3 py-2">
-              Visual intuition: each move depends on the current state, not full history.
-            </figcaption>
-          </figure>
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">
@@ -84,17 +73,6 @@ function BlogMarkovChainsLottery() {
               essentially a giant Markov chain, deciding which websites you&apos;re most likely to walk to next.
             </li>
           </ul>
-          <figure className="rounded-lg overflow-hidden border border-slate-600/60 bg-black/20">
-            <video
-              src="/markov_chain/Markov_chains.mp4"
-              className="w-full h-auto"
-              controls
-              preload="metadata"
-            />
-            <figcaption className="text-xs text-slate-400 px-3 py-2">
-              Markov chains in motion: transition behavior across states over time.
-            </figcaption>
-          </figure>
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">

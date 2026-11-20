@@ -1,0 +1,92 @@
+# Jev: decision and routing rules for BayanWin.
+# Edit this file to change Jev's behavior; no code changes needed. The backend
+# reads it at startup and refuses to start if a value is missing or invalid.
+
+timezone = "Asia/Manila"
+
+[draws]
+hour = 21  # PCSO draws at 9:00 PM Manila time
+# Draw weekdays per game. 0 = Monday ... 6 = Sunday.
+ultra_lotto_6_58 = [1, 4, 6]  # Tue, Fri, Sun
+grand_lotto_6_55 = [0, 2, 5]  # Mon, Wed, Sat
+super_lotto_6_49 = [1, 3, 6]  # Tue, Thu, Sun
+mega_lotto_6_45 = [0, 2, 4]   # Mon, Wed, Fri
+lotto_6_42 = [1, 3, 5]        # Tue, Thu, Sat
+# Dates with no PCSO draws (holidays). Jev won't expect or alert on these.
+no_draw_dates = ["2026-12-24", "2026-12-25", "2026-12-31", "2027-01-01"]
+
+[sync]
+# After each draw, Jev watches the Sheet closely. Results are typed in by hand,
+# so the window is long. The Apps Script push makes most updates instant.
+window_minutes_after_draw = 180
+window_poll_seconds = 60   # Cloud Scheduler calls /api/jev/tick at most once a minute
+idle_poll_minutes = 10
+# Rows read from the bottom of each Sheet per sync. Also catches edits to recent rows.
+tail_rows = 40
+sheet_timeout_seconds = 20
+retry_backoff_seconds = [2, 5, 15]
+# Alert when a draw has no result this long after its draw time.
+missing_result_alert_minutes = 120
+# Alert after this many failed syncs in a row for one game.
+failed_sync_alert_after = 3
+
+[validate]
+# Hold results dated on a day the game doesn't draw (special draws need your OK).
+hold_off_schedule_dates = true
+# Reject draw dates older than this many days when they are new to the database.
+max_backfill_days = 30
+
+[trust]
+# The Sheet is typed by a person, so it is the verified source. A scraper is not.
+# false: scraper results only cross-check and raise alerts. true: a scraper
+# result may publish as "unverified" when the Sheet has nothing yet.
+scraper_can_publish = false
+
+[cache]
+latest_count = 10
+fresh_seconds_in_window = 30
+fresh_seconds_idle = 300
+# How often open pages are told about new results (Server-Sent Events).
+stream_check_seconds_in_window = 5
+stream_check_seconds_idle = 60
+
+[models]
+# Model names come from environment variables so keys and names stay out of git.
+large_env = "LLM_MODEL_NAME"
+small_env = "JEV_SMALL_MODEL"
+# Estimated price per 1M tokens in USD, used for cost logs and daily caps.
+large_price_in = 0.15
+large_price_out = 0.60
+small_price_in = 0.05
+small_price_out = 0.20
+
+# Routes: task -> first handler, then fallbacks in order.
+# Handlers: code:<name>, llm:large, llm:small, ml:<name>, cached, pending.
+# "cached" returns the last good output for the same draw; "pending" returns
+# "Analysis coming soon". Official results never go through a model.
+
+[routes.validate_result]
+handler = "code:validate"
+timeout_seconds = 2
+fallback = []
+
+# Miro reads the six base picks, which change every run, so "cached" is only a
+# last resort here (the last good Miro line for the same game and day).
+[routes.miro_pick]
+handler = "llm:large"
+timeout_seconds = 120
+fallback = ["llm:small", "code:vote", "cached"]
+cost_cap_usd_per_day = 1.00
+
+[routes.council_report]
+handler = "llm:large"
+timeout_seconds = 90
+fallback = ["llm:small", "cached", "pending"]
+cost_cap_usd_per_day = 1.00
+
+[routes.post_publish_analysis]
+handler = "ml:post_publish"
+timeout_seconds = 600
+fallback = ["pending"]
+background = true
+cache = "per_draw"

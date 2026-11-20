@@ -1,18 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { TbListNumbers, TbRefresh } from 'react-icons/tb';
-import { getResults, scrapeData } from '../services/api';
+import { getResults, scrapeData, subscribeToResults } from '../services/api';
 import NumberBall from './NumberBall';
 import CardHeader from './ui/CardHeader';
 import EmptyState from './ui/EmptyState';
 import Notice from './ui/Notice';
-import Spinner from './ui/Spinner';
-import { formatDate, formatCurrency } from '../utils/formatters';
+import { formatDate, formatCurrency, formatUpdatedAgo } from '../utils/formatters';
 
 /** Single lightweight fetch: most recent draws only (no full history / pagination). */
 const LATEST_COUNT = 5;
 
-/** Background incremental pull from Google Sheet → DB; keeps UI fresh without manual clicks. */
-const AUTO_SHEET_SYNC_MS = 90 * 1000;
+/** Re-render the "Updated X min ago" label this often. */
+const AGO_TICK_MS = 30 * 1000;
 
 const errorText = (error) => {
   const detail = error.response?.data?.detail;
@@ -24,9 +23,12 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
   const [loading, setLoading] = useState(false);
   const [quickSyncing, setQuickSyncing] = useState(false);
   const [fullSyncing, setFullSyncing] = useState(false);
-  const [backgroundSyncing, setBackgroundSyncing] = useState(false);
   const [syncError, setSyncError] = useState(null);
+  const [syncedAt, setSyncedAt] = useState(null);
+  const [liveKey, setLiveKey] = useState(0);
+  const [, setAgoTick] = useState(0);
   const busyRef = useRef(false);
+  const shownGameRef = useRef(null);
   const onSheetSyncedRef = useRef(onSheetSynced);
   onSheetSyncedRef.current = onSheetSynced;
 
@@ -35,11 +37,15 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
     let cancelled = false;
 
     const run = async () => {
-      setLoading(true);
+      // Skeletons only when switching games; live refreshes swap rows in place.
+      const firstLoad = shownGameRef.current !== gameType;
+      if (firstLoad) setLoading(true);
       try {
         const response = await getResults(gameType, 1, LATEST_COUNT);
         if (!cancelled) {
           setResults(response.data.results || []);
+          setSyncedAt(response.data.last_synced_at || null);
+          shownGameRef.current = gameType;
         }
       } catch (error) {
         if (!cancelled) {
@@ -56,34 +62,37 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
     return () => {
       cancelled = true;
     };
-  }, [gameType, refreshKey]);
+  }, [gameType, refreshKey, liveKey]);
 
-  const runIncrementalScrape = useCallback(async (opts = { silent: false }) => {
+  /** New draws arrive over the live stream (Jev publishes them); refetch this game when it changes. */
+  useEffect(() => {
+    if (!gameType) return undefined;
+    return subscribeToResults((msg) => {
+      if (msg.game_type === gameType) setLiveKey((n) => n + 1);
+    });
+  }, [gameType]);
+
+  useEffect(() => {
+    const id = setInterval(() => setAgoTick((n) => n + 1), AGO_TICK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const runIncrementalScrape = useCallback(async () => {
     if (!gameType) return;
     if (busyRef.current) return;
     busyRef.current = true;
-    if (opts.silent) {
-      setBackgroundSyncing(true);
-    } else {
-      setQuickSyncing(true);
-      setSyncError(null);
-    }
+    setQuickSyncing(true);
+    setSyncError(null);
     try {
       await scrapeData({ game_type: gameType, full_sync: false });
       onSheetSyncedRef.current?.();
     } catch (error) {
       const msg = errorText(error);
       console.error('Sheet sync failed:', msg);
-      if (!opts.silent) {
-        setSyncError(`Couldn't check for new draws. ${msg}`);
-      }
+      setSyncError(`Couldn't check for new draws. ${msg}`);
     } finally {
       busyRef.current = false;
-      if (opts.silent) {
-        setBackgroundSyncing(false);
-      } else {
-        setQuickSyncing(false);
-      }
+      setQuickSyncing(false);
     }
   }, [gameType]);
 
@@ -106,61 +115,29 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
     }
   };
 
-  /** One extra pull shortly after choosing a game (parent already scrapes once; this catches slow writes). */
-  useEffect(() => {
-    if (!gameType) return;
-    const t = setTimeout(() => {
-      if (!document.hidden) {
-        runIncrementalScrape({ silent: true });
-      }
-    }, 5000);
-    return () => clearTimeout(t);
-  }, [gameType, runIncrementalScrape]);
-
-  /** Periodic + tab-focus incremental sync so you do not have to press a button for normal updates. */
-  useEffect(() => {
-    if (!gameType) return;
-
-    const id = setInterval(() => {
-      if (document.hidden) return;
-      runIncrementalScrape({ silent: true });
-    }, AUTO_SHEET_SYNC_MS);
-
-    const onVis = () => {
-      if (document.visibilityState === 'visible') {
-        runIncrementalScrape({ silent: true });
-      }
-    };
-    document.addEventListener('visibilitychange', onVis);
-
-    return () => {
-      clearInterval(id);
-      document.removeEventListener('visibilitychange', onVis);
-    };
-  }, [gameType, runIncrementalScrape]);
-
   if (!gameType) {
     return null;
   }
 
-  const busy = loading || quickSyncing || fullSyncing || backgroundSyncing;
+  const busy = loading || quickSyncing || fullSyncing;
+  const updatedLabel = formatUpdatedAgo(syncedAt);
 
   return (
     <section className="card" aria-busy={loading}>
       <CardHeader
         icon={TbListNumbers}
         title="Latest results"
-        description="The 5 most recent official draws. New results sync on their own every 90 seconds while this page is open."
+        description="The 5 most recent official draws. New draws appear here on their own, usually within a minute of being entered."
         actions={
           <>
-            {backgroundSyncing && (
-              <span className="inline-flex items-center gap-1.5 text-xs text-silver-500" aria-live="polite">
-                <Spinner className="h-3 w-3" label="Syncing" /> Syncing
+            {updatedLabel && (
+              <span className="text-xs text-silver-500" aria-live="polite">
+                {updatedLabel}
               </span>
             )}
             <button
               type="button"
-              onClick={() => runIncrementalScrape({ silent: false })}
+              onClick={runIncrementalScrape}
               disabled={busy}
               className="btn-secondary btn-sm"
             >
@@ -200,7 +177,7 @@ const LatestResults = ({ gameType, refreshKey = 0, onSheetSynced }) => {
           action={
             <button
               type="button"
-              onClick={() => runIncrementalScrape({ silent: false })}
+              onClick={runIncrementalScrape}
               disabled={busy}
               className="btn-secondary btn-sm"
             >

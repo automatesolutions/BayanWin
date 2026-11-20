@@ -529,9 +529,13 @@ class GoogleSheetsScraper:
         return results
     
     def _get_existing_results(self, game_type: str) -> Dict[str, Dict]:
-        """Get existing results from InstantDB to check for duplicates."""
+        """
+        Get existing results from InstantDB to check for duplicates.
+        Raises if the read fails: an empty lookup would make every Sheet row look new and
+        insert the whole Sheet again (the cause of 10,662 duplicate rows found on 2026-10-28).
+        """
         try:
-            existing = instantdb.get_results(game_type, limit=10000)  # Get all results
+            existing = instantdb.get_results(game_type, limit=50000)  # all results
             # Create a lookup by draw_date AND draw_number for better duplicate detection
             lookup = {}
             for result in existing:
@@ -555,8 +559,8 @@ class GoogleSheetsScraper:
             
             return lookup
         except Exception as e:
-            logger.warning(f"Could not fetch existing results: {e}")
-            return {}
+            logger.error(f"Could not fetch existing results for dedupe; not writing anything: {e}")
+            raise RuntimeError(f"Duplicate check failed for {game_type}; sync stopped to avoid duplicates: {e}") from e
 
     @staticmethod
     def _composite_key_parsed(result: Dict) -> str:
@@ -797,7 +801,12 @@ class GoogleSheetsScraper:
                 range_a1,
                 end_row - cursor + 1,
             )
-            values = ws.get(range_a1)
+            # gspread 6 returns [[]] (not []) for an empty range. Treating that as "1 row read"
+            # moved the cursor one row further past the data on every sync, so new rows were
+            # never read. Drop blank rows before deciding.
+            from jev.sheet import trim_rows
+
+            values = trim_rows(ws.get(range_a1))
             if not values:
                 # Do not advance the cursor: the last populated row may be *above* the cursor
                 # (blank rows at bottom, or cursor drift). Re-read the full sheet to reconcile.

@@ -2,102 +2,26 @@
 
 import type { InstantRules } from "@instantdb/react";
 
+/**
+ * Deny all client (browser) access. Every read and write comes from the backend
+ * (backend/scripts/*.js) through the Admin SDK with INSTANTDB_ADMIN_TOKEN, and the
+ * admin token bypasses these rules. The BayanWin frontend never connects to InstantDB.
+ *
+ * The app ID is public by design, so open rules let anyone edit or delete the
+ * lottery results and predictions. Keep these closed unless a feature needs
+ * client access; then open only that table and only the action it needs.
+ */
 const rules = {
-  // Allow backend API to create/read lottery results and predictions
-  ultra_lotto_6_58_results: {
+  // Every namespace not listed here, including the lottery tables, todos and $users.
+  $default: {
     allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
+      $default: "false",
     },
   },
-  grand_lotto_6_55_results: {
+  // Stop clients from adding new attributes or tables to the schema.
+  attrs: {
     allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  super_lotto_6_49_results: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  mega_lotto_6_45_results: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  lotto_6_42_results: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  ultra_lotto_6_58_predictions: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  grand_lotto_6_55_predictions: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  super_lotto_6_49_predictions: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  mega_lotto_6_45_predictions: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  lotto_6_42_predictions: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  user_memory: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
-    },
-  },
-  sheet_ingest_cursors: {
-    allow: {
-      view: "true",
-      create: "true",
-      update: "true",
-      delete: "true",
+      create: "false",
     },
   },
 } satisfies InstantRules;

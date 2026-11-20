@@ -20,7 +20,8 @@ const _schema = i.schema({
     }),
     // Lottery Results Entities
     ultra_lotto_6_58_results: i.entity({
-      draw_date: i.string(),
+      // Indexed so the newest draws can be read with an ordered query (not a full-table read).
+      draw_date: i.string().indexed(),
       draw_number: i.string().optional(),
       number_1: i.number(),
       number_2: i.number(),
@@ -33,7 +34,8 @@ const _schema = i.schema({
       created_at: i.string(),
     }),
     grand_lotto_6_55_results: i.entity({
-      draw_date: i.string(),
+      // Indexed so the newest draws can be read with an ordered query (not a full-table read).
+      draw_date: i.string().indexed(),
       draw_number: i.string().optional(),
       number_1: i.number(),
       number_2: i.number(),
@@ -46,7 +48,8 @@ const _schema = i.schema({
       created_at: i.string(),
     }),
     super_lotto_6_49_results: i.entity({
-      draw_date: i.string(),
+      // Indexed so the newest draws can be read with an ordered query (not a full-table read).
+      draw_date: i.string().indexed(),
       draw_number: i.string().optional(),
       number_1: i.number(),
       number_2: i.number(),
@@ -59,7 +62,8 @@ const _schema = i.schema({
       created_at: i.string(),
     }),
     mega_lotto_6_45_results: i.entity({
-      draw_date: i.string(),
+      // Indexed so the newest draws can be read with an ordered query (not a full-table read).
+      draw_date: i.string().indexed(),
       draw_number: i.string().optional(),
       number_1: i.number(),
       number_2: i.number(),
@@ -72,7 +76,8 @@ const _schema = i.schema({
       created_at: i.string(),
     }),
     lotto_6_42_results: i.entity({
-      draw_date: i.string(),
+      // Indexed so the newest draws can be read with an ordered query (not a full-table read).
+      draw_date: i.string().indexed(),
       draw_number: i.string().optional(),
       number_1: i.number(),
       number_2: i.number(),

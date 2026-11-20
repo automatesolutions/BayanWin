@@ -5,17 +5,11 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from datetime import datetime, date, timedelta
 from services.instantdb_client import instantdb
 from scrapers.google_sheets_scraper import GoogleSheetsScraper
-from ml_models.xgboost_model import XGBoostModel
-from ml_models.decision_tree import DecisionTreeModel
-from ml_models.markov_chain import MarkovChainModel
-from ml_models.anomaly_detection import AnomalyDetectionModel
-from ml_models.drl_agent import DRLAgent
-from ml_models.nash_hot_filter import NashHotFilterModel
 from utils.frequency_analysis import get_hot_numbers, get_cold_numbers, get_overdue_numbers, calculate_frequency
 from utils.error_distance_calculator import calculate_all_metrics
 from utils.graph_aggregates import cooccurrence_edges, markov_ball_transitions, sankey_hot_model_votes
 from utils.ttl_cache import get_or_set
-from services.apify_ingest import ingest_apify_run, auto_ingest_from_apify_actor
+from services.apify_ingest import collect_apify_rows, start_apify_actor_run
 from services.prediction_council import run_council_report, load_latest_predictions_for_council
 from services.memory_service import (
     build_memory_context_for_council,
@@ -35,7 +29,9 @@ import numpy as np
 import queue
 import threading
 
-from services.miro_strategy import run_miro_strategy_predict
+from services.miro_strategy import run_miro_strategy_predict, deterministic_fallback_votes
+from jev.api import router as jev_router, get_jev, set_post_publish
+from jev.router import RouteFailed
 
 # Configure logging to show INFO level messages
 logging.basicConfig(
@@ -127,13 +123,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize ML models
-xgboost_model = XGBoostModel()
-decision_tree_model = DecisionTreeModel()
-markov_chain_model = MarkovChainModel()
-anomaly_detection_model = AnomalyDetectionModel()
-drl_agent = DRLAgent()
-nash_hot_filter_model = NashHotFilterModel(mode='hybrid')
+app.include_router(jev_router)
+
+# ML models load on first use, not at startup: TensorFlow (~7 s) and XGBoost (~3 s)
+# made every cold start slow, including requests that only read lotto results.
+_ml_models: Optional[Dict[str, Any]] = None
+_ml_lock = threading.Lock()
+
+
+def ml_models() -> Dict[str, Any]:
+    global _ml_models
+    with _ml_lock:
+        if _ml_models is None:
+            from ml_models.xgboost_model import XGBoostModel
+            from ml_models.decision_tree import DecisionTreeModel
+            from ml_models.markov_chain import MarkovChainModel
+            from ml_models.anomaly_detection import AnomalyDetectionModel
+            from ml_models.drl_agent import DRLAgent
+            from ml_models.nash_hot_filter import NashHotFilterModel
+
+            _ml_models = {
+                'XGBoost': XGBoostModel(),
+                'DecisionTree': DecisionTreeModel(),
+                'MarkovChain': MarkovChainModel(),
+                'AnomalyDetection': AnomalyDetectionModel(),
+                'NashHotFilter': NashHotFilterModel(mode='hybrid'),
+                'DRL': DRLAgent(),
+            }
+        return _ml_models
+
+
+def _run_route_sync(task: str, payload: Any, impls: Dict[str, Any], cache_key: Optional[str] = None):
+    """Run a Jev route from a worker thread (the prediction pipeline is synchronous)."""
+    jev = get_jev()
+    return asyncio.run(jev.router.run(task, payload, impls, cache_key=cache_key))
 
 # Pydantic models for request/response validation
 class ScrapeRequest(BaseModel):
@@ -199,10 +222,17 @@ async def get_results(
         raise HTTPException(status_code=400, detail="Invalid game type")
     
     offset = (page - 1) * limit
-    
-    results, total, has_more = instantdb.get_results_with_total(
-        game_type, limit=limit, offset=offset, order_by='draw_date.desc'
-    )
+    jev = get_jev()
+    total = None
+    served_from_cache = False
+    if page == 1:
+        # Jev cache: fresh for 30 s after a draw, 5 min otherwise; a publish invalidates it at once.
+        results, served_from_cache = await asyncio.to_thread(jev.cache.latest, game_type, limit)
+        has_more = len(results) == limit
+    else:
+        results, total, has_more = instantdb.get_results_with_total(
+            game_type, limit=limit, offset=offset, order_by='draw_date.desc'
+        )
     
     results_data = []
     for result in results:
@@ -224,6 +254,8 @@ async def get_results(
         'page': page,
         'limit': limit,
         'has_more': has_more,
+        'last_synced_at': jev.cache.last_synced_at.get(game_type),
+        'cached': served_from_cache,
     }
     if total is not None:
         out['total'] = total
@@ -427,6 +459,23 @@ async def auto_calculate_accuracy_for_new_results(
     return total_calculated
 
 
+def _jev_post_publish(game_type: str) -> None:
+    """Runs in Jev's background queue after a result is published: refresh caches, accuracy, DRL."""
+    _stats_api_cache.pop(game_type, None)
+    _gaussian_api_cache.pop(game_type, None)
+    try:
+        from utils.graph_aggregates import _graph_agg_cache
+
+        for key in [k for k in _graph_agg_cache if k and k[0] == game_type]:
+            _graph_agg_cache.pop(key, None)
+    except Exception:
+        pass
+    asyncio.run(_post_scrape_accuracy_and_drl(game_type))
+
+
+set_post_publish(_jev_post_publish)
+
+
 async def _post_scrape_accuracy_and_drl(game_type: Optional[str]) -> None:
     """Run after scrape response is sent so the client is not blocked on accuracy + DRL."""
     try:
@@ -443,7 +492,7 @@ async def _post_scrape_accuracy_and_drl(game_type: Optional[str]) -> None:
             if game_type:
                 try:
                     # learn_from_accuracy_records loads predictions/results internally; pass full accuracy list
-                    drl_agent.learn_from_accuracy_records(
+                    ml_models()['DRL'].learn_from_accuracy_records(
                         game_type,
                         instantdb.get_prediction_accuracy(game_type),
                         instantdb,
@@ -607,6 +656,42 @@ async def trigger_auto_calculate_accuracy(
         )
 
 
+# A visitor's "Check for new draws" may sync a game at most this often; Jev's own schedule does the rest.
+QUICK_SYNC_MIN_SECONDS = 30
+
+
+async def _jev_quick_sync(game_type: Optional[str]) -> Dict[str, Any]:
+    """Incremental check through Jev (validate -> trust -> publish), rate-limited per game."""
+    if game_type and game_type not in Config.GAMES:
+        raise HTTPException(status_code=400, detail=f"Invalid game type: {game_type}")
+    jev = get_jev()
+    games = [game_type] if game_type else list(Config.GOOGLE_SHEETS)
+    now = jev.now()
+    per_game: Dict[str, Any] = {}
+    for g in games:
+        last = jev.last_sync.get(g)
+        if last is not None and (now - last).total_seconds() < QUICK_SYNC_MIN_SECONDS:
+            per_game[g] = {"skipped": "synced in the last 30 seconds", "added": 0}
+            continue
+        res = await jev.sync_game(g, "manual_check")
+        if res.get("ok") is False:
+            per_game[g] = {"error": res.get("error"), "added": 0}
+        else:
+            per_game[g] = {"added": len(res.get("published") or []), "held": len(res.get("held") or [])}
+    added = sum(v.get("added", 0) for v in per_game.values())
+    errors = {g: v["error"] for g, v in per_game.items() if v.get("error")}
+    if errors and added == 0 and len(errors) == len(games):
+        raise HTTPException(status_code=502, detail=f"Couldn't read the Sheet: {errors}")
+    return {
+        "success": True,
+        "stats": {"total_new": added, "games": per_game,
+                  "games_updated": [g for g, v in per_game.items() if v.get("added")]},
+        "full_sync": False,
+        "timestamp": datetime.now().isoformat(),
+        "message": f"Sheets: {added} new" if added else "No new data to add (may already exist)",
+    }
+
+
 async def _execute_sheets_scrape(
     request: ScrapeRequest,
     background_tasks: BackgroundTasks,
@@ -614,8 +699,10 @@ async def _execute_sheets_scrape(
 ) -> Dict[str, Any]:
     """Shared implementation for /api/scrape and /api/cron/ingest-sheets."""
     logger.info("Starting scrape operation...")
-    scraper = GoogleSheetsScraper()
     use_full_sync = bool(request.full_sync) or (full_sync is True)
+    if not use_full_sync:
+        return await _jev_quick_sync(request.game_type)
+    scraper = GoogleSheetsScraper()
 
     try:
         if request.game_type:
@@ -689,29 +776,19 @@ async def _execute_sheets_scrape(
         'sync_modes': sync_modes,
     }
 
+    # Apify used to run here and the request waited for the whole actor run (minutes).
+    # It now runs after the response, and its rows go through Jev's validation and trust rules.
     apify_result = None
-    apify_added = 0
     if getattr(Config, "APIFY_AUTO_INGEST", True) and Config.APIFY_API_TOKEN and getattr(Config, "APIFY_ACTOR_ID", None):
-        try:
-            apify_result = auto_ingest_from_apify_actor(request.game_type)
-            if not apify_result.get("skipped"):
-                apify_added = int(apify_result.get("total_added") or 0)
-                logger.info("Apify auto-ingest: added %s rows (run_id=%s)", apify_added, apify_result.get("run_id"))
-        except Exception as apify_err:
-            logger.warning("Apify auto-ingest failed (non-critical): %s", apify_err)
-            apify_result = {"skipped": False, "error": str(apify_err), "total_added": 0}
+        background_tasks.add_task(_apify_background_ingest, request.game_type)
+        apify_result = {"scheduled": True}
 
-    combined_added = total_added + apify_added
+    combined_added = total_added
+    for gt, gs in games_payload.items():
+        if isinstance(gs, dict) and gs.get('added', 0) > 0:
+            get_jev().cache.invalidate(gt)
 
-    msg_parts = []
-    if total_added > 0:
-        msg_parts.append(f"Sheets: {total_added} new")
-    if apify_added > 0:
-        msg_parts.append(f"Apify: {apify_added} new")
-    if not msg_parts:
-        msg_core = "No new data to add (may already exist)"
-    else:
-        msg_core = " / ".join(msg_parts)
+    msg_core = f"Sheets: {total_added} new" if total_added > 0 else "No new data to add (may already exist)"
 
     response: Dict[str, Any] = {
         'success': True,
@@ -726,7 +803,7 @@ async def _execute_sheets_scrape(
     if combined_added == 0 and not has_errors:
         logger.info("No new data added - all results may already exist in database")
     else:
-        logger.info(f"✅ Sheets + Apify: {combined_added} new results to InstantDB (sheets={total_added}, apify={apify_added})")
+        logger.info(f"✅ Sheets: {combined_added} new results to InstantDB")
 
     if combined_added > 0:
         background_tasks.add_task(_post_scrape_accuracy_and_drl, request.game_type)
@@ -788,6 +865,36 @@ async def scrape_data(
         )
 
 
+async def _ingest_apify_via_jev(run_id: str, game_type: Optional[str]) -> Dict[str, Any]:
+    """Apify is a scraper source: Jev validates its rows and applies the trust rules in jev.toml."""
+    collected = await asyncio.to_thread(collect_apify_rows, run_id, game_type)
+    jev = get_jev()
+    by_game: Dict[str, Any] = {}
+    total_published = 0
+    for gt, rows in collected["rows_by_game"].items():
+        if not rows:
+            continue
+        res = await jev.ingest_scraper_rows(gt, rows, source="apify")
+        by_game[gt] = {k: res.get(k) for k in ("published", "held", "rejected")}
+        total_published += len(res.get("published") or [])
+    return {
+        "run_id": run_id,
+        "items_received": collected["items_received"],
+        "skipped_unparsed": collected["skipped_unparsed"],
+        "total_added": total_published,
+        "by_game": by_game,
+    }
+
+
+async def _apify_background_ingest(game_type: Optional[str]) -> None:
+    try:
+        run_id = await asyncio.to_thread(start_apify_actor_run, game_type)
+        if run_id:
+            await _ingest_apify_via_jev(run_id, game_type)
+    except Exception as e:
+        logger.warning("Background Apify ingest failed (non-critical): %s", e)
+
+
 @app.post("/api/ingest/apify")
 async def ingest_apify_dataset(request: ApifyIngestRequest):
     """Poll Apify run dataset, normalize rows, dedupe, write to InstantDB (additive to Sheets)."""
@@ -796,22 +903,12 @@ async def ingest_apify_dataset(request: ApifyIngestRequest):
     if request.game_type and request.game_type not in Config.GAMES:
         raise HTTPException(status_code=400, detail="Invalid game_type")
     try:
-        result = ingest_apify_run(request.run_id, default_game_type=request.game_type)
+        result = await _ingest_apify_via_jev(request.run_id, request.game_type)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.exception("Apify ingest failed")
         raise HTTPException(status_code=500, detail=str(e))
-
-    if result.get("total_added", 0) > 0:
-        try:
-            await auto_calculate_accuracy_for_new_results(
-                request.game_type,
-                results_limit=Config.ACCURACY_POST_SCRAPE_RESULTS_LIMIT,
-                predictions_limit=Config.ACCURACY_POST_SCRAPE_PREDICTIONS_LIMIT,
-            )
-        except Exception as e:
-            logger.warning("Auto-calculate after Apify ingest (non-critical): %s", e)
 
     return {"success": True, **result, "timestamp": datetime.now().isoformat()}
 
@@ -842,20 +939,10 @@ async def apify_webhook(
         raise HTTPException(status_code=503, detail="APIFY_API_TOKEN is not configured")
 
     try:
-        result = ingest_apify_run(str(run_id), default_game_type=game_type)
+        result = await _ingest_apify_via_jev(str(run_id), game_type)
     except Exception as e:
         logger.exception("Apify webhook ingest failed")
         raise HTTPException(status_code=500, detail=str(e))
-
-    if result.get("total_added", 0) > 0:
-        try:
-            await auto_calculate_accuracy_for_new_results(
-                game_type,
-                results_limit=Config.ACCURACY_POST_SCRAPE_RESULTS_LIMIT,
-                predictions_limit=Config.ACCURACY_POST_SCRAPE_PREDICTIONS_LIMIT,
-            )
-        except Exception as e:
-            logger.warning("Auto-calculate after Apify webhook (non-critical): %s", e)
 
     return {"success": True, **result}
 
@@ -898,14 +985,7 @@ def _prediction_pipeline(
     )
 
     predictions: Dict[str, Any] = {}
-    model_types = {
-        'XGBoost': xgboost_model,
-        'DecisionTree': decision_tree_model,
-        'MarkovChain': markov_chain_model,
-        'AnomalyDetection': anomaly_detection_model,
-        'NashHotFilter': nash_hot_filter_model,
-        'DRL': drl_agent,
-    }
+    model_types = dict(ml_models())
 
     all_prev_rows = instantdb.get_predictions(game_type, limit=120)
 
@@ -1015,11 +1095,19 @@ def _prediction_pipeline(
     if getattr(Config, "MIRO_STRATEGY_ENABLED", True):
         miro_label = "Miro"
         if Config.LLM_API_KEY:
-            logger.info("Running Miro strategy (LLM multi-agent)…")
+            logger.info("Running Miro strategy via Jev route miro_pick…")
             try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    fut = pool.submit(run_miro_strategy_predict, game_type, predictions)
-                    miro_numbers = fut.result(timeout=180)
+                # Jev: large model -> small model -> vote across the six models -> last good line.
+                routed = _run_route_sync(
+                    "miro_pick",
+                    {"game_type": game_type},
+                    {
+                        "llm": lambda _p, model: run_miro_strategy_predict(game_type, predictions, model=model),
+                        "code:vote": lambda _p: deterministic_fallback_votes(predictions, game_type),
+                    },
+                    cache_key=f"{game_type}|{target_draw_date}",
+                )
+                miro_numbers = [int(n) for n in routed.value]
                 prev_preds = _prev_preds_lists_from_rows(all_prev_rows, miro_label)
                 prediction_data = {
                     "target_draw_date": target_draw_date,
@@ -1042,15 +1130,16 @@ def _prediction_pipeline(
                     "numbers": miro_numbers,
                     "previous_predictions": prev_preds[:5],
                     "prediction_id": new_prediction.get("id"),
+                    "jev_route": routed.option,
                 }
                 logger.info("Miro prediction stored: %s", miro_numbers)
                 _emit_predict_stream(
                     stream_queue,
                     {"event": "model", "model": miro_label, "predictions": {miro_label: predictions[miro_label]}},
                 )
-            except concurrent.futures.TimeoutError:
-                logger.error("Miro strategy timed out after 180s")
-                predictions[miro_label] = {"error": "Miro strategy timed out (180s)"}
+            except RouteFailed as e:
+                logger.error("Miro: every Jev option failed: %s", e)
+                predictions[miro_label] = {"error": "Miro is unavailable right now. The six model picks are complete."}
                 _emit_predict_stream(
                     stream_queue,
                     {"event": "model", "model": miro_label, "predictions": {miro_label: predictions[miro_label]}},
@@ -1109,13 +1198,16 @@ def _prediction_pipeline(
     council_report = None
     if include_council and Config.LLM_API_KEY and getattr(Config, "LLM_COUNCIL_ENABLED", True):
         try:
-            council_report = run_council_report(game_type, predictions, "")
-        except AuthenticationError as e:
-            logger.warning("Council report auth failed (non-critical): %s", e)
-            council_report = {"error": "LLM API key rejected; check LLM_API_KEY in .env"}
-        except Exception as e:
-            logger.warning("Council report failed (non-critical): %s", e)
-            council_report = {"error": str(e)}
+            routed = _run_route_sync(
+                "council_report",
+                {"game_type": game_type},
+                {"llm": lambda _p, model: run_council_report(game_type, predictions, "", model=model)},
+                cache_key=game_type,
+            )
+            council_report = None if routed.outcome == "pending" else routed.value
+        except RouteFailed as e:
+            logger.warning("Council report: every Jev option failed (non-critical): %s", e)
+            council_report = {"error": "The summary is unavailable right now."}
 
     ts = datetime.now().isoformat()
     if stream_queue is not None:
@@ -1179,7 +1271,8 @@ async def generate_predictions(
         return StreamingResponse(ndjson_iter(), media_type="application/x-ndjson")
 
     try:
-        out = _prediction_pipeline(game_type, include_council, stream_queue=None)
+        # In a worker thread: the models take minutes and must not block result reads or Jev syncs.
+        out = await asyncio.to_thread(_prediction_pipeline, game_type, include_council, None)
         return out
     except HTTPException:
         raise
@@ -1204,13 +1297,19 @@ async def council_report(game_type: str, body: CouncilReportRequest = Body(...))
 
     mem = build_memory_context_for_council(body.user_key)
     try:
-        report = run_council_report(game_type, preds, mem)
-    except (AuthenticationError, RateLimitError, APIConnectionError) as e:
-        logger.warning("council-report LLM error: %s", e)
-        raise _http_exception_from_llm_error(e)
-    except Exception as e:
-        logger.exception("council-report failed")
-        raise HTTPException(status_code=500, detail=str(e))
+        # Jev: large model -> small model -> last good report -> "Analysis coming soon".
+        routed = await get_jev().router.run(
+            "council_report",
+            {"game_type": game_type},
+            {"llm": lambda _p, model: run_council_report(game_type, preds, mem, model=model)},
+            cache_key=game_type,
+        )
+    except RouteFailed as e:
+        logger.warning("council-report: every Jev option failed: %s", e)
+        raise HTTPException(status_code=503, detail="The summary is unavailable right now. Try again in a few minutes.")
+    if routed.outcome == "pending":
+        return {"success": True, "report": None, **routed.value}
+    report = routed.value
 
     if body.user_key:
         try:
@@ -1403,7 +1502,7 @@ async def calculate_accuracy(
                 
                 # Update DRL agent with new feedback
                 if len(drl_accuracy) >= 5:  # Only update if we have enough data
-                    drl_agent.learn_from_accuracy_records(game_type, drl_accuracy, instantdb)
+                    ml_models()['DRL'].learn_from_accuracy_records(game_type, drl_accuracy, instantdb)
                     logger.info(f"DRL agent updated with accuracy feedback for {game_type}")
             except Exception as e:
                 logger.warning(f"Failed to update DRL with accuracy (non-critical): {e}")

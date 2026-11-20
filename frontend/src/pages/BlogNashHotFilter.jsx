@@ -1,39 +1,10 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import ArticleMeta from '../components/ArticleMeta';
-import posterImg from '../../assets/nash/A_Beautiful_Mind_Poster.jpg';
-import gifSmart from '../../assets/nash/smart-beautiful-mind.gif';
-import gifDiamond from '../../assets/nash/cardiachill-diamondhands.gif';
-
-function MediaAside() {
-  return (
-    <aside className="lg:sticky lg:top-24 space-y-6" aria-label="Article media">
-      <div className="rounded-xl overflow-hidden border-2 border-amber-500/30 shadow-[0_0_40px_-10px_rgba(251,191,36,0.35)] bg-black/40">
-        <img src={posterImg} alt="A Beautiful Mind theatrical poster" className="w-full h-auto object-cover" />
-        <p className="text-[11px] text-slate-500 px-3 py-2 bg-black/50 font-mono">A Beautiful Mind (2001) · poster</p>
-      </div>
-
-      <figure className="rounded-xl overflow-hidden border border-slate-600/60 bg-slate-900/80 p-2">
-        <img src={gifSmart} alt="Animated tribute to A Beautiful Mind" className="w-full rounded-lg" />
-        <figcaption className="text-[11px] text-slate-500 mt-2 px-1 leading-snug">
-          Visual beat: strategy, cooperation, and the "beautiful" tension of competing ideas in one mind.
-        </figcaption>
-      </figure>
-
-      <figure className="rounded-xl overflow-hidden border border-orange-500/25 bg-gradient-to-b from-slate-900 to-black p-2">
-        <img src={gifDiamond} alt="Diamond hands meme animation" className="w-full rounded-lg" />
-        <figcaption className="text-[11px] text-slate-500 mt-2 px-1 leading-snug">
-          Pop-culture shorthand for stubborn commitment—fun contrast with Nash's mathematical notion of stable, mutual
-          best responses (equilibrium), not financial advice.
-        </figcaption>
-      </figure>
-    </aside>
-  );
-}
 
 function BlogNashHotFilter() {
   return (
-    <main id="main" className="page max-w-6xl">
+    <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
         <Link to="/" className="link">
           Home
@@ -46,246 +17,177 @@ function BlogNashHotFilter() {
         <span className="text-slate-300">NashHotFilter</span>
       </nav>
 
-      <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(260px,320px)] lg:gap-10 xl:gap-12">
-        <article className="article min-w-0 space-y-10 text-slate-300">
-          <header className="space-y-3">
-            <h1 className="text-3xl sm:text-4xl font-bold text-white">NashHotFilter and the spirit of <em>A Beautiful Mind</em></h1>
-            <p className="text-slate-400 max-w-3xl">
-              BayanWin's <strong className="text-slate-200">NashHotFilter</strong> borrows its name from ideas associated
-              with mathematician John Nash—especially <strong className="text-slate-200">equilibrium</strong> thinking in
-              game theory—then mixes those ideas with hot/cold number heuristics. This article walks through Ron Howard's
-              2001 film as popular storytelling (not a documentary), then connects why that story matters to how we talk
-              about "balance" in prediction tools built on random draws.
-            </p>
-            <ArticleMeta />
-          </header>
-
-          <div className="rounded-lg bg-amber-950/30 border border-amber-500/20 px-4 py-3 text-xs text-amber-100/90">
-            <strong className="text-amber-200">Note:</strong> The following is a <strong>plot summary</strong> of{' '}
-            <em>A Beautiful Mind</em> (2001). It contains spoilers. The real John Nash's life differed in important ways
-            from the screenplay; see biographies and his Nobel lecture for scholarly detail.
-          </div>
-
-          <section className="space-y-4" aria-labelledby="sec-film">
-            <h2 id="sec-film" className="text-xl font-semibold text-white">
-              The film: biographical drama, not a math textbook
-            </h2>
-            <p>
-              <em>A Beautiful Mind</em> is a 2001 American biographical drama directed by Ron Howard about mathematician{' '}
-              <strong className="text-slate-200">John Nash</strong>, who was awarded the Nobel Memorial Prize in Economic
-              Sciences for his work on game theory. In the film, Nash is played by <strong className="text-slate-200">Russell Crowe</strong>.
-            </p>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-princeton">
-            <h2 id="sec-princeton" className="text-xl font-semibold text-white">
-              Princeton, 1947: ambition on a scholarship
-            </h2>
-            <p>
-              In 1947, Nash arrives at <strong className="text-slate-200">Princeton University</strong> as co-recipient,
-              with Martin Hansen, of the Carnegie Scholarship for Mathematics. He meets fellow graduate students Sol,
-              Ainsley, and Bender, and his roommate <strong className="text-slate-200">Charles Herman</strong>, a literature
-              student.
-            </p>
-            <p>
-              Determined to publish something truly original, Nash listens as his classmates debate how to approach a group
-              of women at a bar. He argues that a <strong className="text-slate-200">cooperative approach</strong> could
-              improve everyone's odds—a storytelling spark that, in the film, leads him toward a new notion of governing
-              dynamics.
-            </p>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-mit">
-            <h2 id="sec-mit" className="text-xl font-semibold text-white">
-              MIT, the Pentagon, and a second life in secrets
-            </h2>
-            <p>
-              His breakthrough earns him a place at <strong className="text-slate-200">MIT</strong>, where he picks Sol and
-              Bender over Hansen to join him. In 1953, Nash is summoned to the Pentagon to help decipher encrypted enemy
-              communications. Restless with campus work, he is recruited by the mysterious{' '}
-              <strong className="text-slate-200">William Parcher</strong> of the U.S. Department of Defense for a classified
-              mission: spot hidden patterns in magazines and newspapers to counter a supposed Soviet plot. He believes he
-              receives an implanted diode that unlocks a dead-drop at a mansion. Obsession and paranoia deepen.
-            </p>
-            <p>
-              Nash falls in love with student <strong className="text-slate-200">Alicia Larde</strong>; they marry. After a
-              violent episode between Parcher and imagined Soviet agents, Nash tries to quit but feels compelled to
-              continue. While lecturing at Harvard, he flees perceived pursuers and is sedated; he wakes under the care of{' '}
-              <strong className="text-slate-200">Dr. Rosen</strong>.
-            </p>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-truth">
-            <h2 id="sec-truth" className="text-xl font-semibold text-white">
-              Diagnosis, unopened envelopes, and the cost of clarity
-            </h2>
-            <p>
-              Rosen explains to Alicia that Nash has <strong className="text-slate-200">schizophrenia</strong>—Charles,
-              Marcee (Charles's niece), and Parcher are hallucinations. Alicia, Sol, and Bender comb his study, thick with
-              news clippings. She finds unopened "classified" packets from the drop point and confronts him with the truth.
-              Nash, shattered, tries to cut out the diode; there is nothing there. Insulin shock therapy follows, then
-              release. Frustrated by medication side effects, he secretly stops treatment; Parcher returns, urging him back to
-              a shed near home.
-            </p>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-relapse">
-            <h2 id="sec-relapse" className="text-xl font-semibold text-white">
-              Relapse, danger, and learning which voices are real
-            </h2>
-            <p>
-              In 1956, Alicia finds Nash has relapsed. Their infant son is left in a filling bathtub while Nash believes
-              Charles is watching—Alicia calls Rosen; in confusion Nash strikes out, thinking he is saving them from
-              Parcher. Fleeing with the baby, Alicia forces a reckoning: Nash notices his phantoms never age—
-              <strong className="text-slate-200">Marcee remains a girl</strong>—and accepts they are hallucinations.
-              Against medical advice, he chooses community care with Alicia rather than another hospitalization.
-            </p>
-          </section>
-
-          <section className="space-y-4" aria-labelledby="sec-princeton2">
-            <h2 id="sec-princeton2" className="text-xl font-semibold text-white">
-              Return to Princeton, decades of discipline, and the Nobel stage
-            </h2>
-            <p>
-              Nash returns to Princeton, humbly asking{' '}
-              <strong className="text-slate-200">Hansen—now department head</strong>—for library space and permission to
-              audit classes. Over twenty years he learns to disregard visions; by the late 1970s he teaches again. In 1994
-              he receives the <strong className="text-slate-200">Nobel Memorial Prize in Economic Sciences</strong> for game
-              theory; colleagues honor him, and in Stockholm he dedicates the prize to Alicia. The film closes as Charles,
-              Marcee, and Parcher reappear—Nash simply walks past them, leaving with his family.
-            </p>
-          </section>
-
-          <section className="space-y-4 rounded-xl border border-electric-500/25 bg-slate-800/50 px-5 py-6" aria-labelledby="sec-bayanwin">
-            <h2 id="sec-bayanwin" className="text-xl font-semibold text-white">
-              Why any of this shows up in BayanWin as NashHotFilter
-            </h2>
-            <p>
-              The movie made Nash a household name for <strong className="text-slate-200">game theory</strong> and the
-              image of a mind wrestling competing strategies at once. <strong className="text-slate-200">NashHotFilter</strong>{' '}
-              in BayanWin is a nod to that cultural story: a hybrid heuristic that blends equilibrium-flavored balancing
-              ideas with "hot" (frequently drawn) number pressure—useful for exploration, not proof of a winning system.
-            </p>
-            <p>
-              More specifically, the NashHotFilter works by asking a question analogous to Nash equilibrium: given
-              the current hot-number landscape (which numbers have appeared more frequently recently), what is the
-              "stable" combination where no individual number preference would improve the overall balance of the
-              selection? The algorithm iterates toward this balanced point while still weighting toward historically
-              active numbers. The result is a six-number candidate line that is neither purely the most-frequent
-              numbers nor a random spread—it occupies a middle ground guided by both frequency signal and
-              equilibrium-style balance.
-            </p>
-            <p className="text-slate-500 text-xs">
-              Lottery draws are legally random; past frequency does not create obligation for the next draw. Enjoy the
-              models as experiments on history, not promises about the future.
-            </p>
-          </section>
-
-          <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="sec-game-theory-context">
-            <h2 id="sec-game-theory-context" className="text-xl font-semibold text-white">
-              Game theory in the Philippines lottery context
-            </h2>
-            <p>
-              The Philippines lottery — managed by PCSO for games including 6/42, 6/45, 6/49, 6/55, and 6/58 — is
-              not a game in the game-theory sense: there is no strategic interaction between players. Each player
-              independently selects numbers, and the outcome is determined by a certified random draw, not by what
-              other players chose. So why apply game-theory-inspired thinking at all?
-            </p>
-            <p>
-              The answer is that <strong className="text-slate-200">equilibrium concepts are useful for balancing
-              competing objectives</strong> within a single decision process, even without strategic opponents.
-              When choosing six numbers from a pool of 42 to 58, a purely hot-number approach may cluster predictions
-              in a narrow range and miss broad coverage; a purely random approach ignores historical signal entirely.
-              NashHotFilter uses the equilibrium idea as a <em>balancing metaphor</em>: find the point where the
-              tension between "follow the hot numbers" and "maintain good spread" is resolved rather than dominated
-              by either extreme.
-            </p>
-            <p>
-              This is a creative application of mathematical thinking to an uncertain domain — genuinely interesting
-              as an exploratory tool, but always with the understanding that no balancing heuristic changes the
-              fundamental randomness of the next draw.
-            </p>
-          </section>
-
-          <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="sec-faq-nash">
-            <h2 id="sec-faq-nash" className="text-xl font-semibold text-white">
-              FAQ: NashHotFilter and game theory in lottery analysis
-            </h2>
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold text-slate-200">Did John Nash actually work on lottery prediction?</h3>
-                <p className="text-slate-400 mt-1">
-                  No. John Nash's mathematical work was in game theory, specifically in proving the existence
-                  of equilibria in non-cooperative games (Nash equilibrium). His ideas have been applied broadly
-                  in economics, evolutionary biology, and computer science. BayanWin's NashHotFilter borrows
-                  the conceptual spirit of equilibrium — balancing competing forces — not any actual Nash
-                  work on lottery games.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200">Can the NashHotFilter predict winning PCSO numbers?</h3>
-                <p className="text-slate-400 mt-1">
-                  No. PCSO draws are random by design. NashHotFilter is an exploratory heuristic that produces
-                  balanced candidate lines based on historical frequency data. It is one of six models in
-                  BayanWin's ensemble — useful for exploration and comparison, but not a predictive system
-                  that can overcome genuine randomness.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200">How is NashHotFilter different from just picking the most frequent numbers?</h3>
-                <p className="text-slate-400 mt-1">
-                  A pure hot-number strategy would simply rank numbers by historical frequency and pick the
-                  top six. NashHotFilter adds a balancing constraint: the candidate line should be in a
-                  "stable" configuration where neither hot-number weighting nor spread coverage dominates
-                  completely. This produces lines that consider frequency without being entirely driven by it.
-                </p>
-              </div>
-              <div>
-                <h3 className="font-semibold text-slate-200">How did the film A Beautiful Mind influence modern views of game theory?</h3>
-                <p className="text-slate-400 mt-1">
-                  Ron Howard's 2001 film brought Nash equilibrium into popular consciousness far beyond academic
-                  economics. The bar scene (simplified for dramatic purposes) introduced millions of viewers to
-                  the idea that individual rational choices can lead to collectively suboptimal outcomes — a
-                  concept that resonates in fields from traffic management to political science. The film
-                  sparked widespread curiosity about game theory and is one reason the concept is recognizable
-                  outside universities today.
-                </p>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-3 border-t border-slate-600/50 pt-6" aria-labelledby="related-articles">
-            <h2 id="related-articles" className="text-lg font-semibold text-white">
-              Related Articles
-            </h2>
-            <ul className="list-disc pl-5 text-sm text-slate-300 space-y-1">
-              <li>
-                <Link to="/blog/markov-chains-lottery" className="text-amber-400 hover:text-amber-300 underline">
-                  Markov chain lottery analysis in the Philippines
-                </Link>
-              </li>
-              <li>
-                <Link to="/blog/deep-reinforcement-learning" className="text-amber-400 hover:text-amber-300 underline">
-                  AI lottery prediction methods with Deep RL
-                </Link>
-              </li>
-              <li>
-                <Link to="/methodology" className="text-amber-400 hover:text-amber-300 underline">
-                  BayanWin lottery methodology and limitations
-                </Link>
-              </li>
-            </ul>
-          </section>
-
-          <p className="pt-4">
-            <Link to="/blog" className="text-amber-400 hover:text-amber-300 text-sm font-medium">
-              ← Back to Blog
-            </Link>
+      <article className="article text-slate-200 space-y-6">
+        <header>
+          <h1 className="text-3xl font-bold text-white mb-2">NashHotFilter and the spirit of <em>A Beautiful Mind</em></h1>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            BayanWin’s <strong className="text-slate-200">NashHotFilter</strong> takes its name from mathematician John
+            Nash and his idea of a mixed strategy. It combines that idea with hot and cold number counts from PCSO draw
+            history. This article explains the game theory in plain words, then shows step by step how the model builds
+            its six-number line.
           </p>
-        </article>
+          <ArticleMeta />
+        </header>
 
-        <MediaAside />
-      </div>
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Why the name comes from a film</h2>
+          <p>
+            Most people first met John Nash through Ron Howard’s 2001 film <em>A Beautiful Mind</em>, with Russell Crowe
+            as Nash. The film is a drama, not a math lesson, and it changes many facts of his life. It still did one
+            useful thing: it made “Nash equilibrium” a phrase that people outside universities recognize. We chose the
+            name for the same reason. It tells you, in two words, that this model borrows from game theory.
+          </p>
+          <p>
+            The real Nash shared the 1994 Nobel Memorial Prize in Economic Sciences for his work on non-cooperative
+            games. He never worked on lotteries, and nothing in his math says how to pick lottery numbers.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Nash equilibrium in plain words</h2>
+          <p>
+            Game theory studies decisions where your best move depends on what other people do. A Nash equilibrium is a
+            set of choices, one per player, where no player can do better by changing only their own choice. Everyone is
+            already giving their best response to everyone else.
+          </p>
+          <p>
+            Sometimes no single fixed choice is stable. In rock-paper-scissors, any player who always throws rock gets
+            beaten. The stable plan is to throw each option one third of the time, at random. Game theory calls this a{' '}
+            <strong className="text-slate-200">mixed strategy</strong>: you pick among options with fixed odds, so nobody
+            can predict and punish your choice. Nash proved that every finite game has at least one equilibrium, if
+            players are allowed mixed strategies.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">Why a lottery is not really a game</h2>
+          <p>
+            PCSO games such as 6/42, 6/45, 6/49, 6/55, and 6/58 have no strategic opponent. The draw machine does not
+            react to your ticket, and other players’ choices do not change which balls come out. So no lottery strategy
+            is a Nash equilibrium in the strict sense.
+          </p>
+          <p>
+            What NashHotFilter borrows is the habit of balancing. A line built only from the most-drawn numbers bunches
+            up. A purely random line ignores history completely. NashHotFilter starts from a set of balanced tickets,
+            picks one with equal odds, and then lets historical frequency adjust it a little.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">How NashHotFilter builds a line</h2>
+          <ol className="list-decimal pl-5 space-y-2">
+            <li>
+              <strong className="text-slate-100">Build a wheel of eight tickets.</strong> For 6/49 the model uses a
+              fixed set of eight tickets, and each has three low numbers (1 to 24) and three high numbers (25 to 49). For
+              the other games it generates eight different tickets. Each has three odd and three even numbers, and
+              three numbers from each half of the range.
+            </li>
+            <li>
+              <strong className="text-slate-100">Pick one ticket with equal odds.</strong> Each of the eight tickets has
+              a 1 in 8 (12.5%) chance. This is the mixed-strategy step: no ticket is favored.
+            </li>
+            <li>
+              <strong className="text-slate-100">Find the cold numbers.</strong> The model counts how often every number
+              has appeared across all stored draws for that game. The 15 least-drawn numbers are cold. The 20 most-drawn
+              numbers are hot.
+            </li>
+            <li>
+              <strong className="text-slate-100">Swap up to two cold numbers.</strong> If the chosen ticket holds cold
+              numbers, the model replaces up to two of them with hot numbers of the same type: odd for odd, even for
+              even. It picks each replacement at random, with more often drawn numbers more likely to be picked.
+            </li>
+            <li>
+              <strong className="text-slate-100">Sort and return.</strong> The six numbers are sorted and shown on the
+              dashboard. If the frequency data is not available, the model returns the chosen wheel ticket unchanged.
+            </li>
+          </ol>
+          <p>
+            The result sits between two extremes. It is not the six hottest numbers, and it is not a random spread.
+            Because steps two and four use randomness, running the model twice can give two different lines.
+          </p>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300">
+          <h2 className="text-xl font-semibold text-white">What this does and doesn’t change</h2>
+          <p>
+            Balance makes a line look reasonable, and frequency makes it reflect the record. Neither changes your odds.
+            A 6/49 ticket has a 1 in 13,983,816 chance of matching all six numbers, whether it is balanced, hot, or
+            picked at random. A number that came up often in the past has no greater chance in the next draw.
+          </p>
+          <p>
+            One practical effect is real, though small. Balanced lines avoid patterns such as 1-2-3-4-5-6 that many
+            players choose. If such a line ever won, the prize would be split among many winners.
+          </p>
+        </section>
+
+        <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="sec-faq-nash">
+          <h2 id="sec-faq-nash" className="text-xl font-semibold text-white">
+            FAQ: NashHotFilter and game theory in lottery analysis
+          </h2>
+          <div className="space-y-4">
+            <div>
+              <h3 className="font-semibold text-slate-200">Did John Nash actually work on lottery prediction?</h3>
+              <p className="text-slate-400 mt-1">
+                No. His work proved that equilibria exist in non-cooperative games. BayanWin’s NashHotFilter borrows the
+                mixed-strategy idea and the habit of balancing, not any method Nash wrote about lotteries.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-200">Can the NashHotFilter predict winning PCSO numbers?</h3>
+              <p className="text-slate-400 mt-1">
+                No. PCSO draws are random by design. NashHotFilter is one of six numeric models in BayanWin, useful for
+                exploring and comparing lines, not for beating randomness.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-200">How is NashHotFilter different from picking the most frequent numbers?</h3>
+              <p className="text-slate-400 mt-1">
+                A pure hot-number pick takes the six most-drawn numbers. NashHotFilter starts from a balanced ticket and
+                changes at most two of its numbers, so frequency adjusts the line without taking it over.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-slate-200">Why do I get a different line each time?</h3>
+              <p className="text-slate-400 mt-1">
+                The model picks one of eight tickets at random and draws its replacements at random, weighted by
+                frequency. Different runs can land on different tickets and different swaps.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300 border-t border-slate-600/50 pt-5">
+          <h2 className="text-xl font-semibold text-white">Related articles</h2>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>
+              <Link to="/blog/markov-chains-lottery" className="link">
+                Markov chain lottery analysis in the Philippines
+              </Link>
+            </li>
+            <li>
+              <Link to="/blog/miro-prediction" className="link">
+                How Miro merges six models into one pick
+              </Link>
+            </li>
+            <li>
+              <Link to="/methodology" className="link">
+                BayanWin lottery methodology and limitations
+              </Link>
+            </li>
+          </ul>
+        </section>
+
+        <p className="text-xs text-slate-500 border-t border-slate-600/50 pt-5">
+          BayanWin is not affiliated with PCSO. Lottery draws are random; past frequency does not change the next draw.
+          Play only with money you can afford to lose. 18+ only.
+        </p>
+
+        <p>
+          <Link to="/blog" className="link text-sm font-medium">
+            ← Back to Blog
+          </Link>
+        </p>
+      </article>
     </main>
   );
 }

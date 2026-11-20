@@ -133,7 +133,7 @@ def deterministic_fallback_votes(predictions: Dict[str, Any], game_type: str) ->
     return sorted(chosen[:6])
 
 
-def run_miro_strategy_predict(game_type: str, predictions: Dict[str, Any]) -> List[int]:
+def run_miro_strategy_predict(game_type: str, predictions: Dict[str, Any], model: Optional[str] = None) -> List[int]:
     """
     Run two LLM JSON rounds; return six distinct ints in game bounds.
     Raises ValueError if LLM_API_KEY is missing.
@@ -143,7 +143,7 @@ def run_miro_strategy_predict(game_type: str, predictions: Dict[str, Any]) -> Li
 
     lo, hi = _game_bounds(game_type)
     ctx = build_miro_context(game_type, predictions)
-    llm = LLMClient()
+    llm = LLMClient(model=model)
 
     agent_system = (
         "You simulate six specialist analysts named exactly: XGBoost, DecisionTree, MarkovChain, "

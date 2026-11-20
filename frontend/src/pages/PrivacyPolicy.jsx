@@ -18,7 +18,7 @@ function PrivacyPolicy() {
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Privacy Policy</h1>
           <p className="text-slate-400">
-            Last updated: May 9, 2026. BayanWin (“we”, “us”) operates the website{' '}
+            Last updated: October 28, 2026. BayanWin (“we”, “us”) operates the website{' '}
             <strong className="text-slate-300">bayanwin.net</strong> (the “Site”), primarily for users in the{' '}
             <strong className="text-slate-300">Philippines</strong>.
           </p>
@@ -66,28 +66,61 @@ function PrivacyPolicy() {
             Cookies, advertising, and analytics
           </h2>
           <p className="text-slate-300">
-            We may use <strong className="text-slate-200">cookies</strong> and similar technologies that are strictly
-            necessary to run the Site, and—if we enable them—technologies for <strong className="text-slate-200">analytics</strong>{' '}
-            or <strong className="text-slate-200">advertising</strong> (for example, Google AdSense or comparable programs).
+            <strong className="text-slate-200">Necessary storage:</strong> We save your cookie choice in your browser’s
+            local storage, so the banner doesn’t ask again on every visit. The Site has no accounts and sets no login
+            cookies.
           </p>
           <p className="text-slate-300">
-            Where advertising partners are used, they may collect or receive information from your device to measure ad
-            performance, personalize or contextualize ads (depending on your region and partner policies), and prevent fraud.
-            You can often control cookies through your browser settings. For Google products, see Google’s Ads and Privacy
-            resources for opt-out and partner information.
+            <strong className="text-slate-200">Analytics:</strong> We don’t run an analytics service on the Site at this
+            time. If we add one, we will update this policy and the cookie banner first, and it will load only with
+            your consent.
           </p>
           <p className="text-slate-300">
-            Third-party ad scripts (such as Google AdSense, when enabled) are loaded only on{' '}
-            <strong className="text-slate-200">editorial and informational</strong> sections of the Site—specifically the Blog,
-            About BayanWin, and Methodology areas—not on the interactive prediction dashboard home screen, legal-only pages
-            (Privacy, Terms, Responsible Play, Contact), or similar utility-focused screens. This reduces the chance of ads
-            appearing where publisher-written editorial content is minimal.
+            <strong className="text-slate-200">Advertising:</strong> We use Google AdSense to show ads on some pages.
+            Third-party vendors, including Google, use cookies to serve ads based on your prior visits to this website or
+            other websites. Google’s use of advertising cookies enables it and its partners to serve ads to you based on
+            your visits to this Site and other sites on the internet.
           </p>
-          <p className="text-slate-400 text-xs">
-            Where Philippine law requires <strong className="text-slate-300">consent</strong> for non-essential cookies or
-            similar technologies (for example, some analytics or advertising), we will obtain it in line with applicable
-            rules. You can set cookie preferences in the site consent banner. If we add AdSense or similar, we will align
-            this policy with program requirements and the DPA.
+          <ul className="list-disc pl-5 space-y-2 text-slate-300">
+            <li>
+              You can opt out of personalized advertising in Google’s{' '}
+              <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer" className="link">
+                Ads Settings
+              </a>
+              .
+            </li>
+            <li>
+              You can opt out of some third-party vendors’ use of cookies for personalized advertising at{' '}
+              <a href="https://www.aboutads.info/choices" target="_blank" rel="noopener noreferrer" className="link">
+                aboutads.info/choices
+              </a>
+              .
+            </li>
+            <li>
+              To see how Google uses data from sites that show its ads, read{' '}
+              <a
+                href="https://policies.google.com/technologies/partner-sites"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="link"
+              >
+                How Google uses information from sites or apps that use its services
+              </a>
+              .
+            </li>
+          </ul>
+          <p className="text-slate-300">
+            <strong className="text-slate-200">Your choice in our banner:</strong> If you choose “Accept all”, Google may
+            show personalized ads. If you choose “Reject optional”, we ask Google to show
+            non-personalized ads only. Non-personalized ads still use cookies to limit how often you see an ad, to count
+            ads in aggregate, and to stop fraud. You can change your choice at any time with the{' '}
+            <strong className="text-slate-200">Cookie settings</strong> link in the footer. In some regions, such as the
+            EEA, the UK, and Switzerland, Google may also show its own consent message before ads load.
+          </p>
+          <p className="text-slate-300">
+            <strong className="text-slate-200">Where ads appear:</strong> Ads load only on our long-form articles: About
+            BayanWin, Methodology, and the individual Blog articles. We don’t show ads on the prediction dashboard, the
+            Blog list, Responsible Play, Privacy, Terms, Contact, or error pages.
           </p>
         </section>
 
@@ -184,7 +217,7 @@ function PrivacyPolicy() {
         </section>
 
         <p className="text-xs text-slate-500 pt-4 border-t border-slate-600/50">
-          This policy is provided for transparency and for programs such as Google AdSense. It is{' '}
+          This policy is provided for transparency. It is{' '}
           <strong className="text-slate-400">not legal advice</strong>. For official lottery results and rules, refer to PCSO
           and applicable Philippine regulators. For privacy complaints in the Philippines, you may contact the NPC at{' '}
           <a href="https://privacy.gov.ph" target="_blank" rel="noopener noreferrer" className="text-slate-400 underline">

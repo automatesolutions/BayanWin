@@ -21,7 +21,7 @@ import { scrollToElement } from '../components/motion/SmoothScroll';
 import { gsap, SplitText, ScrollTrigger, EASE, MOTION_OK, DESKTOP_MOTION } from '../components/motion/gsap';
 import { GAMES, GAME_ORDER } from '../utils/constants';
 import { drawDaysLabel } from '../utils/drawSchedule';
-import { generatePredictionsStream, scrapeData } from '../services/api';
+import { generatePredictionsStream } from '../services/api';
 
 const errorText = (error) => {
   const detail = error?.response?.data?.detail;
@@ -56,7 +56,6 @@ function HomePage() {
   const [predictions, setPredictions] = useState(null);
   const [loading, setLoading] = useState(false);
   const [resultsRefresh, setResultsRefresh] = useState(0);
-  const [syncError, setSyncError] = useState(null);
   const [runError, setRunError] = useState(null);
   const heroRef = useRef(null);
   const headingRef = useRef(null);
@@ -88,16 +87,9 @@ function HomePage() {
   const handleGameSelect = (gameType) => {
     setSelectedGame(gameType);
     setPredictions(null);
-    setSyncError(null);
     setRunError(null);
+    // No Sheet sync per click: Jev syncs on the draw schedule and pushes new results live.
     setResultsRefresh((n) => n + 1);
-    scrapeData({ game_type: gameType })
-      .then(() => setResultsRefresh((n) => n + 1))
-      .catch((error) => {
-        const msg = errorText(error);
-        console.error('Sheet ingest failed:', msg);
-        setSyncError(msg);
-      });
   };
 
   const analyzeFromBoard = (gameType) => {
@@ -204,16 +196,6 @@ function HomePage() {
             onGeneratePredictions={handleGeneratePredictions}
             loading={loading}
           />
-
-          {syncError && (
-            <Notice tone="warning" title="Couldn't fetch the newest draws" onDismiss={() => setSyncError(null)}>
-              <p>You&apos;re seeing the latest results we already have. Try again later.</p>
-              <details className="mt-1 text-xs opacity-80">
-                <summary className="cursor-pointer">Technical details</summary>
-                <p className="mt-1 font-mono">{syncError}</p>
-              </details>
-            </Notice>
-          )}
 
           {selectedGame && (
             <div ref={dashboardRef} className="space-y-6">

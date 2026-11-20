@@ -4,13 +4,27 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Any, Dict, Iterator, List, Optional
 
 from openai import OpenAI
 
 from config import Config
 
 logger = logging.getLogger(__name__)
+
+# Token usage sink for the current call stack (set by jev.router to log cost per route).
+_usage_sink: ContextVar[Optional[List[Dict[str, int]]]] = ContextVar("llm_usage_sink", default=None)
+
+
+@contextmanager
+def collect_usage(sink: List[Dict[str, int]]) -> Iterator[None]:
+    token = _usage_sink.set(sink)
+    try:
+        yield
+    finally:
+        _usage_sink.reset(token)
 
 
 class LLMClient:
@@ -48,6 +62,12 @@ class LLMClient:
             kwargs["response_format"] = response_format
         try:
             response = self.client.chat.completions.create(**kwargs)
+            sink = _usage_sink.get()
+            if sink is not None and getattr(response, "usage", None) is not None:
+                sink.append({
+                    "prompt_tokens": int(response.usage.prompt_tokens or 0),
+                    "completion_tokens": int(response.usage.completion_tokens or 0),
+                })
             content = response.choices[0].message.content or ""
             return self._strip_think(content)
         except Exception as e:

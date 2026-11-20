@@ -48,19 +48,21 @@ def _generate_balanced_ticket(max_number: int, numbers_count: int = 6) -> List[i
     evens_low = [n for n in range(1, mid + 1) if n % 2 == 0]
     evens_high = [n for n in range(mid + 1, max_number + 1) if n % 2 == 0]
 
-    # Need 3 odd, 3 even. For balance: pick from low and high in each
-    result = []
-    # 2 odd from low, 1 from high (or 1 from low, 2 from high)
+    # 3 odd + 3 even, and 3 low + 3 high: one parity gives 2 low + 1 high, the
+    # other 1 low + 2 high. Which parity leans low is a coin flip per ticket.
     np.random.shuffle(odds_low)
     np.random.shuffle(odds_high)
-    result.extend(odds_low[:2])
-    result.extend(odds_high[:1])
-    # 2 even from low, 1 from high
     np.random.shuffle(evens_low)
     np.random.shuffle(evens_high)
-    result.extend(evens_low[:2])
-    result.extend(evens_high[:1])
-    return sorted(result)
+    odd_low_count = 2 if np.random.random() < 0.5 else 1
+    even_low_count = 3 - odd_low_count
+    result = (
+        odds_low[:odd_low_count]
+        + odds_high[:3 - odd_low_count]
+        + evens_low[:even_low_count]
+        + evens_high[:3 - even_low_count]
+    )
+    return sorted(int(n) for n in result)
 
 
 def _build_smart_wheel(game_type: str) -> List[List[int]]:

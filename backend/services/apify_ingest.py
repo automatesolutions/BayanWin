@@ -1,7 +1,7 @@
 """
-Ingest Apify Actor dataset items into InstantDB lottery results.
-Apify-only dedupe: same composite key as Sheets path (date_key|draw_number).
-Does not import or modify GoogleSheetsScraper.
+Read Apify Actor dataset items and normalize them into result rows.
+Apify is a scraper source: Jev (jev/sync.py) validates the rows, checks them against
+the Sheet and the database, and decides what to publish.
 """
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
 from config import Config
-from services.instantdb_client import instantdb
 
 logger = logging.getLogger(__name__)
 
@@ -138,49 +137,19 @@ def normalize_apify_item(
     return game_type, result
 
 
-def _build_existing_lookup(game_type: str) -> Dict[str, Any]:
-    lookup = {}
-    try:
-        existing = instantdb.get_results(game_type, limit=10000)
-    except Exception as e:
-        logger.warning("Could not load existing results for %s: %s", game_type, e)
-        return lookup
-
-    for result in existing:
-        draw_date = result.get("draw_date")
-        draw_number = result.get("draw_number") or ""
-        if not draw_date:
-            continue
-        if isinstance(draw_date, str):
-            try:
-                dt = datetime.fromisoformat(draw_date.replace("Z", "+00:00"))
-                date_key = dt.date().isoformat()
-            except ValueError:
-                date_key = draw_date.split("T")[0] if "T" in draw_date else draw_date
-        else:
-            date_key = str(draw_date)
-        lookup[f"{date_key}|{draw_number}"] = result
-    return lookup
-
-
-def auto_ingest_from_apify_actor(
+def start_apify_actor_run(
     default_game_type: Optional[str] = None,
     api_token: Optional[str] = None,
     actor_id: Optional[str] = None,
-) -> Dict[str, Any]:
+) -> Optional[str]:
     """
-    Start the configured Apify Actor, wait for completion, ingest dataset into InstantDB.
-    Run input: { "game_type": "<id>" } when default_game_type is set; {} otherwise.
-    Skips gracefully if token or actor_id missing.
+    Start the configured Apify Actor and wait for it to finish. Returns the run id, or None
+    if APIFY_API_TOKEN / APIFY_ACTOR_ID are not set. Run this in the background only.
     """
     token = api_token or Config.APIFY_API_TOKEN
     aid = (actor_id or Config.APIFY_ACTOR_ID or "").strip()
     if not token or not aid:
-        return {
-            "skipped": True,
-            "reason": "APIFY_API_TOKEN or APIFY_ACTOR_ID not set",
-            "total_added": 0,
-        }
+        return None
 
     from apify_client import ApifyClient
 
@@ -197,8 +166,7 @@ def auto_ingest_from_apify_actor(
     rid = call_result.get("id") if isinstance(call_result, dict) else getattr(call_result, "id", None)
     if not rid:
         raise ValueError("Apify run id missing from actor response")
-
-    return ingest_apify_run(str(rid), default_game_type=default_game_type, api_token=token)
+    return str(rid)
 
 
 def fetch_apify_dataset_items(api_token: str, run_id: str) -> List[Dict[str, Any]]:
@@ -219,13 +187,14 @@ def fetch_apify_dataset_items(api_token: str, run_id: str) -> List[Dict[str, Any
     return out
 
 
-def ingest_apify_run(
+def collect_apify_rows(
     run_id: str,
     default_game_type: Optional[str] = None,
     api_token: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
-    Fetch Apify dataset items, normalize, dedupe per game, write via InstantDB bridge.
+    Fetch and normalize an Apify run's dataset, grouped by game. Writes nothing:
+    Jev validates these rows and decides what to publish (see jev/trust.py).
     """
     token = api_token or Config.APIFY_API_TOKEN
     if not token:
@@ -234,48 +203,14 @@ def ingest_apify_run(
     items = fetch_apify_dataset_items(token, run_id)
     logger.info("Apify run %s: %s dataset items", run_id, len(items))
 
-    per_game_new: Dict[str, List[Dict[str, Any]]] = {g: [] for g in Config.GAMES}
+    rows_by_game: Dict[str, List[Dict[str, Any]]] = {g: [] for g in Config.GAMES}
     skipped = 0
-
-    lookups = {g: _build_existing_lookup(g) for g in Config.GAMES}
-
     for raw in items:
         normalized = normalize_apify_item(raw, default_game_type)
         if not normalized:
             skipped += 1
             continue
         game_type, result = normalized
-        dt_key = result["draw_date"]
-        dnum = result.get("draw_number", "")
-        composite = f"{dt_key}|{dnum}"
-        if composite in lookups[game_type]:
-            continue
-        lookups[game_type][composite] = True
-        per_game_new[game_type].append(result)
+        rows_by_game[game_type].append(result)
 
-    added_by_game = {}
-    total_added = 0
-    errors = []
-
-    for game_type, results in per_game_new.items():
-        added_by_game[game_type] = 0
-        if not results:
-            continue
-        for row in results:
-            try:
-                instantdb.create_result(game_type, row)
-                added_by_game[game_type] += 1
-                total_added += 1
-            except Exception as e:
-                logger.exception("Failed saving Apify row for %s", game_type)
-                errors.append(f"{game_type} {row.get('draw_date')}: {e}")
-
-    return {
-        "success": len(errors) == 0,
-        "run_id": run_id,
-        "items_received": len(items),
-        "skipped_unparsed": skipped,
-        "total_added": total_added,
-        "added_by_game": added_by_game,
-        "errors": errors,
-    }
+    return {"run_id": run_id, "items_received": len(items), "skipped_unparsed": skipped, "rows_by_game": rows_by_game}

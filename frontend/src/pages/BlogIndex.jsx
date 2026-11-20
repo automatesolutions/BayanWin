@@ -8,19 +8,16 @@ const POSTS = [
   {
     slug: 'nash-hotfilter',
     title: 'NashHotFilter & A Beautiful Mind',
-    subtitle: 'From John Nash’s game theory to the equilibrium-inspired filter in BayanWin.',
+    subtitle: 'Mixed strategies in plain words, and how the model balances eight tickets with hot-number counts.',
     tag: 'Algorithms',
-    readMins: 12,
-    available: true,
+    readMins: 6,
   },
   {
     slug: 'miro-prediction',
-    title: 'Miro prediction & the MiroFish wave',
-    subtitle:
-      'Multi-agent sandboxes, seed signals from the real world, and how BayanWin’s Miro layer echoes the same imagination.',
-    tag: 'LLM · Swarm',
-    readMins: 8,
-    available: true,
+    title: 'How Miro merges six models into one pick',
+    subtitle: 'The data Miro reads, its two language model rounds, and the checks that keep every line valid.',
+    tag: 'LLM',
+    readMins: 6,
   },
   {
     slug: 'pcso-658-results-analysis',
@@ -29,7 +26,6 @@ const POSTS = [
       'A practical breakdown of Ultra Lotto 6/58 historical patterns, frequency ranges, and interpretation limits.',
     tag: 'Game Analysis',
     readMins: 9,
-    available: true,
   },
   {
     slug: 'pcso-649-results-analysis',
@@ -38,7 +34,6 @@ const POSTS = [
       'How to interpret Super Lotto 6/49 draw behavior using transition, gap, and error-distance context.',
     tag: 'Game Analysis',
     readMins: 9,
-    available: true,
   },
   {
     slug: 'markov-chains-lottery',
@@ -46,7 +41,6 @@ const POSTS = [
     subtitle: "From drunkard's walks to Google's algorithms, and why memoryless systems matter.",
     tag: 'Algorithms',
     readMins: 10,
-    available: true,
   },
   {
     slug: 'deep-reinforcement-learning',
@@ -54,7 +48,6 @@ const POSTS = [
     subtitle: 'From Atari to AlphaGo: how agents learn through trial, reward, and adaptation.',
     tag: 'AI · DRL',
     readMins: 11,
-    available: true,
   },
 ];
 
@@ -125,23 +118,15 @@ function PostCard({ post, featured = false }) {
             featured ? 'max-w-3xl text-2xl sm:text-3xl' : 'text-lg'
           }`}
         >
-          {post.available ? (
-            <Link to={`/blog/${post.slug}`} className="after:absolute after:inset-0 after:rounded-card">
-              {post.title}
-            </Link>
-          ) : (
-            post.title
-          )}
+          <Link to={`/blog/${post.slug}`} className="after:absolute after:inset-0 after:rounded-card">
+            {post.title}
+          </Link>
         </h2>
         <p className="mb-5 text-sm leading-relaxed text-silver-400">{post.subtitle}</p>
-        {post.available ? (
-          <span className="inline-flex items-center gap-1.5 text-sm font-medium text-electric-300 group-hover:text-electric-200">
-            Read article
-            <TbArrowRight className="transition-transform group-hover:translate-x-0.5" aria-hidden />
-          </span>
-        ) : (
-          <span className="text-sm text-silver-500">Coming soon</span>
-        )}
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium text-electric-300 group-hover:text-electric-200">
+          Read article
+          <TbArrowRight className="transition-transform group-hover:translate-x-0.5" aria-hidden />
+        </span>
       </div>
     </article>
   );

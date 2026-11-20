@@ -142,6 +142,38 @@ export const calculateAccuracy = (predictionId, resultId, gameType) => {
   });
 };
 
+/**
+ * Live result updates (Server-Sent Events). One connection is shared by every listener on the
+ * page; the browser reconnects on its own. `onResult({ game_type, latest, last_synced_at })`
+ * fires when a game's newest draw changes. Returns an unsubscribe function.
+ */
+const resultListeners = new Set();
+let resultSource = null;
+
+export const subscribeToResults = (onResult) => {
+  if (typeof window === 'undefined' || typeof EventSource === 'undefined') return () => {};
+  resultListeners.add(onResult);
+  if (!resultSource) {
+    resultSource = new EventSource(`${API_BASE_URL}/api/results/stream`);
+    resultSource.addEventListener('result', (e) => {
+      let msg;
+      try {
+        msg = JSON.parse(e.data);
+      } catch {
+        return;
+      }
+      resultListeners.forEach((fn) => fn(msg));
+    });
+  }
+  return () => {
+    resultListeners.delete(onResult);
+    if (resultListeners.size === 0 && resultSource) {
+      resultSource.close();
+      resultSource = null;
+    }
+  };
+};
+
 export const scrapeData = (data = {}) => {
   return api.post('/api/scrape', data);
 };

@@ -44,15 +44,38 @@ export function teardownAdSenseDom() {
 }
 
 /**
- * Paths where AdSense may load: long-form editorial pages only. The homepage is
- * left out because its first screen is the prediction tool (a functional screen),
- * and Google does not allow ads on screens used for navigation or tools. Legal,
- * contact and 404 pages are out for the same reason.
+ * The only pages that may show ads: long-form articles we wrote ourselves.
+ * Exact paths, not prefixes, so a new page never gets ads until it is reviewed
+ * and added here. Left out on purpose:
+ * - `/` dashboard and `/blog` index: tool and navigation screens.
+ * - `/responsible-play`: help for problem gambling, no ads next to it.
+ * - `/privacy`, `/terms`, `/contact`, 404: legal, contact and error screens.
+ * Keep the list in the Privacy Policy ("Where ads appear") in step with this one.
  */
-export function isAdSenseAllowedPath(pathname) {
-  if (!pathname) return false;
-  if (pathname === '/blog' || pathname.startsWith('/blog/')) return true;
-  if (pathname === '/about' || pathname === '/methodology') return true;
-  if (pathname === '/responsible-play') return true;
-  return false;
+export const AD_ELIGIBLE_PATHS = new Set([
+  '/about',
+  '/methodology',
+  '/blog/nash-hotfilter',
+  '/blog/miro-prediction',
+  '/blog/markov-chains-lottery',
+  '/blog/deep-reinforcement-learning',
+  '/blog/pcso-658-results-analysis',
+  '/blog/pcso-649-results-analysis',
+]);
+
+/** Second check, on the rendered page: ads load only once `<main>` holds this much text. */
+export const MIN_PUBLISHER_WORDS = 500;
+
+export function isAdEligiblePath(rawPath) {
+  // "/about/" and "/about" are the same page (same rule as getSeoForPath).
+  const pathname = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
+  return AD_ELIGIBLE_PATHS.has(pathname);
+}
+
+/** Words of visible text in the page's `<main id="main">` (0 while it has not rendered). */
+export function countPublisherWords() {
+  const main = document.getElementById('main');
+  if (!main) return 0;
+  const text = main.innerText || main.textContent || '';
+  return text.split(/\s+/).filter(Boolean).length;
 }

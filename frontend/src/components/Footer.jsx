@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import logo from '../assets/logo-128.webp';
+import { OPEN_CONSENT_EVENT } from '../utils/cookieConsent';
 
 const GROUPS = [
   {
@@ -56,6 +57,17 @@ const Footer = () => (
                 </Link>
               </li>
             ))}
+            {group.title === 'Legal & support' && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => window.dispatchEvent(new Event(OPEN_CONSENT_EVENT))}
+                  className="inline-flex min-h-[36px] items-center text-sm text-silver-400 transition-colors hover:text-white"
+                >
+                  Cookie settings
+                </button>
+              </li>
+            )}
           </ul>
         </nav>
       ))}
