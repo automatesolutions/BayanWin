@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, NavLink, useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import { Link, NavLink } from './SiteLink';
 import { TbChevronDown, TbExternalLink, TbMenu2, TbX } from 'react-icons/tb';
 import logo from '../assets/logo-128.webp';
+import InstallAppButton from './InstallAppButton';
 
 const NAV = [
   { to: '/', label: 'Dashboard', end: true },
@@ -95,7 +97,7 @@ const Header = () => {
     }`;
 
   return (
-    <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-charcoal-900/95">
+    <header className="safe-top safe-x fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-charcoal-900/95">
       <a
         href="#main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-3 focus:z-50 focus:rounded-lg focus:bg-electric-500 focus:px-4 focus:py-2 focus:text-charcoal-950"
@@ -161,6 +163,7 @@ const Header = () => {
               </li>
             ))}
           </ul>
+          <InstallAppButton className="btn-ghost mt-3 w-full justify-start" />
         </nav>
       )}
     </header>

@@ -6,7 +6,7 @@ function SeoHead({
   description,
   canonical,
   ogType = 'website',
-  ogImage = 'https://bayanwin.net/favicon.png',
+  ogImage = 'https://bayanwin.net/og-image.png',
   jsonLd = null,
   robots = null,
   article = null,
@@ -25,6 +25,9 @@ function SeoHead({
       <meta property="og:description" content={description} />
       <meta property="og:url" content={canonical} />
       <meta property="og:image" content={ogImage} />
+      <meta property="og:image:width" content="1200" />
+      <meta property="og:image:height" content="630" />
+      <meta property="og:image:alt" content="BayanWin logo" />
       {article ? <meta property="article:published_time" content={article.published} /> : null}
       {article ? <meta property="article:modified_time" content={article.modified} /> : null}
 

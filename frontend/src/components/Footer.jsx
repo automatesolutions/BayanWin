@@ -1,6 +1,7 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from './SiteLink';
 import logo from '../assets/logo-128.webp';
+import InstallAppButton from './InstallAppButton';
 import { OPEN_CONSENT_EVENT } from '../utils/cookieConsent';
 
 const GROUPS = [
@@ -39,6 +40,7 @@ const Footer = () => (
         <p className="text-sm text-silver-500">
           18+ only. Not affiliated with PCSO.
         </p>
+        <InstallAppButton className="btn-ghost -ml-3" />
       </div>
 
       {GROUPS.map((group) => (

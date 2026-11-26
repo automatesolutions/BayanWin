@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "BayanWin",
+  "short_name": "BayanWin",
+  "description": "BayanWin provides PCSO historical results, lottery statistics in the Philippines, and algorithmic lottery prediction methods for educational analysis.",
+  "lang": "en-PH",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0C1119",
+  "theme_color": "#0C1119",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

@@ -1,11 +1,10 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, useLocation } from 'react-router-dom';
 import Header from './components/Header';
 import Footer from './components/Footer';
 import SeoHead from './components/SeoHead';
 import CookieConsentBanner from './components/CookieConsentBanner';
-import AutoAds from './components/AutoAds';
-import { isAdEligiblePath } from './constants/adsense';
+import { resumeAdRequests } from './constants/adsense';
 import { getSeoForPath } from './seo/routeSeo';
 import Spinner from './components/ui/Spinner';
 import SmoothScroll from './components/motion/SmoothScroll';
@@ -27,6 +26,23 @@ const ResponsiblePlay = lazy(() => import('./pages/ResponsiblePlay'));
 const Methodology = lazy(() => import('./pages/Methodology'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 
+// Draft articles for review: routed in `npm run dev` only. Vite drops this branch from
+// production builds, so drafts are never prerendered, deployed or shown ads.
+const DRAFT_ROUTES = import.meta.env.DEV
+  ? [
+      ['/drafts/ultra-lotto-658-number-frequency', lazy(() => import('./pages/drafts/UltraLotto658NumberFrequency'))],
+      ['/drafts/pcso-jackpot-odds', lazy(() => import('./pages/drafts/PcsoJackpotOdds'))],
+      ['/drafts/lotto-642-sums-odd-even', lazy(() => import('./pages/drafts/Lotto642SumsOddEven'))],
+      ['/drafts/check-pcso-ticket-claim-prize', lazy(() => import('./pages/drafts/CheckTicketClaimPrize'))],
+    ]
+  : [];
+
+// Runs after the route in the same Suspense boundary has hydrated (see resumeAdRequests).
+function AdsAfterHydration() {
+  useEffect(resumeAdRequests, []);
+  return null;
+}
+
 function App() {
   const location = useLocation();
   const seo = getSeoForPath(location.pathname);
@@ -37,7 +53,7 @@ function App() {
       {/* Fixed UI stays outside the smooth-scroll layer, which is transformed. */}
       <Header />
       <SmoothScroll>
-        <div className="h-16 shrink-0" aria-hidden />
+        <div className="header-offset shrink-0" aria-hidden />
         <Suspense
           fallback={
             <div className="flex flex-1 items-center justify-center py-24">
@@ -45,8 +61,8 @@ function App() {
             </div>
           }
         >
-          {/* Inside Suspense so ads never load over the loading spinner, only once the page has rendered. */}
-          <AutoAds hasPublisherContent={isAdEligiblePath(location.pathname)} />
+          {/* Same boundary as the page, so its effect fires only once the page has hydrated. */}
+          <AdsAfterHydration />
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/about" element={<AboutBayanWin />} />
@@ -62,6 +78,9 @@ function App() {
             <Route path="/terms" element={<TermsOfUse />} />
             <Route path="/responsible-play" element={<ResponsiblePlay />} />
             <Route path="/methodology" element={<Methodology />} />
+            {DRAFT_ROUTES.map(([path, Draft]) => (
+              <Route key={path} path={path} element={<Draft />} />
+            ))}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>

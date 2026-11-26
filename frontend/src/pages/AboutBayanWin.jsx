@@ -1,8 +1,23 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import AuthorBio from '../components/AuthorBio';
+import { AUTHOR } from '../seo/author';
+import { allGames, dataRange, formatDate, formatNumber, formatPeso } from '../data/stats';
+
+const MODELS = [
+  ['Markov chains', 'Treat the draws as a sequence and count how often one state follows another.', '/blog/markov-chains-lottery', 'How the Markov model works'],
+  ['NashHotFilter', 'Uses game theory to spread a set of tickets across hot numbers, low and high ranges.', '/blog/nash-hotfilter', 'How NashHotFilter works'],
+  ['Deep reinforcement learning', 'An agent that adjusts its picks from the gap between past picks and real results.', '/blog/deep-reinforcement-learning', 'How the deep RL model works'],
+  ['XGBoost and decision trees', 'Tree models trained on features from past draws, such as frequency and gaps.'],
+  ['Anomaly detection', 'Monte Carlo runs that show which sums and combinations are common and which are rare.'],
+  ['Miro', 'A language model reads the six other models and writes one line, with the reasons to doubt it.', '/blog/miro-prediction', 'How Miro works'],
+];
 
 function AboutBayanWin() {
+  const games = allGames();
+  const totalDraws = games.reduce((n, g) => n + g.draws, 0);
+
   return (
     <main id="main" className="page max-w-4xl">
       <nav className="breadcrumbs" aria-label="Breadcrumb">
@@ -13,160 +28,180 @@ function AboutBayanWin() {
         <span className="text-slate-300">About BayanWin</span>
       </nav>
 
-      <article className="article text-slate-200 space-y-8">
+      <article className="article text-slate-200 space-y-10">
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">About BayanWin</h1>
           <p className="text-slate-400 text-sm leading-relaxed">
-            What the platform does, how historical data is used, and how the statistics and models fit together.
+            What BayanWin is, who runs it, what our data shows, and how to use it without fooling yourself.
           </p>
           <ArticleMeta />
         </header>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="overview-heading">
           <h2 id="overview-heading" className="text-xl font-semibold text-white">
-            What is BayanWin?
+            What BayanWin is
           </h2>
           <p>
-            BayanWin is an informational dashboard for fans of major Philippine lottery draws. It brings together{' '}
-            <strong className="text-slate-200">Ultra Lotto 6/58, Grand Lotto 6/55, Super Lotto 6/49, Mega Lotto 6/45,</strong>{' '}
-            and <strong className="text-slate-200">Lotto 6/42</strong>: recent winning numbers, history, frequency stats,
-            and optional machine-learning-style prediction outputs for exploration—not official PCSO results.
+            BayanWin is a free website for PCSO lotto draw history in the Philippines. It covers five games: Lotto 6/42,
+            Mega Lotto 6/45, Super Lotto 6/49, Grand Lotto 6/55, and Ultra Lotto 6/58.
           </p>
           <p>
-            Draw data is ingested from curated sources on a regular schedule and when you use the site, so lists can update
-            through the day. Always verify payouts and official results with PCSO or authorized outlets.
+            For each game you get the latest results, number statistics, a ticket checker, and the output of seven
+            models. You don&apos;t need an account, and we don&apos;t sell tickets or link to betting sites.
           </p>
-        </section>
-
-        <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="mission-heading">
-          <h2 id="mission-heading" className="text-xl font-semibold text-white">
-            Beyond “lucky picks”: patterns, statistics, and models
-          </h2>
           <p>
-            BayanWin is not only about generating prediction lines. It is built around the idea of{' '}
-            <strong className="text-slate-200">studying how random-looking draw sequences behave over long horizons</strong>
-            —using transparent statistics and algorithms to surface structure you can inspect yourself (hot and cold periods,
-            gaps, co-occurrence, and how different models disagree). Lottery draws are random in the statistical sense; the
-            tools here explore <em>historical regularities</em> in the record, not a hidden “formula” that beats randomness.
+            BayanWin isn&apos;t affiliated with PCSO. Always check winning numbers and prizes with PCSO or an authorized
+            lotto outlet before you act on them.
           </p>
         </section>
 
-        <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="stats-heading">
-          <h2 id="stats-heading" className="text-xl font-semibold text-white">
-            Core statistics
+        <section
+          id="who-runs-bayanwin"
+          className="space-y-3 text-sm leading-relaxed text-slate-300"
+          aria-labelledby="who-heading"
+        >
+          <h2 id="who-heading" className="text-xl font-semibold text-white">
+            Who runs BayanWin
           </h2>
-          <ul className="list-disc pl-5 space-y-2">
-            <li>
-              <strong className="text-slate-200">Frequency analysis</strong> — how often each number has appeared relative
-              to expectation, helping you see “hot” and “cold” numbers at a glance.
-            </li>
-            <li>
-              <strong className="text-slate-200">Overdue numbers</strong> — numbers that have not appeared for unusually
-              long stretches in the historical window, for exploratory context (not a guarantee they are “due”).
-            </li>
-          </ul>
-        </section>
-
-        <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="dashboard-heading">
-          <h2 id="dashboard-heading" className="text-xl font-semibold text-white">
-            Analysis dashboards
-          </h2>
-          <ul className="list-disc pl-5 space-y-2">
-            <li>
-              <strong className="text-slate-200">Gaussian distribution views</strong> — visualize how sums and products of
-              winning numbers distribute compared to simplified Gaussian-style baselines, to spot unusual draws and typical
-              bands.
-            </li>
-            <li>
-              <strong className="text-slate-200">Error / distance analysis</strong> — after predictions are stored, the app
-              can compare them to actual results using distance-style metrics so you can see how each model behaved over
-              time—not just the latest pick.
-            </li>
-            <li>
-              Graph views (e.g. co-occurrence and transition-style plots) summarize <strong className="text-slate-200">
-                relationships between numbers and between consecutive draws
-              </strong>{' '}
-              in the dataset you have loaded.
-            </li>
-          </ul>
+          <p>
+            {AUTHOR.name} runs BayanWin from the {AUTHOR.location}, writes the articles on this site, and builds the
+            dashboard and the models.
+          </p>
+          <p>
+            We built BayanWin to put PCSO draw history in one place and to test popular lotto ideas, like hot numbers,
+            against real results. When an idea fails that test, we say so on the page.
+          </p>
+          <p>
+            To reach us, email{' '}
+            <a href={`mailto:${AUTHOR.email}`} className="link">
+              {AUTHOR.email}
+            </a>{' '}
+            or use the{' '}
+            <Link to="/contact" className="link">
+              contact page
+            </Link>
+            .
+          </p>
+          <AuthorBio className="mt-5" headingLevel="h3" />
         </section>
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="data-heading">
           <h2 id="data-heading" className="text-xl font-semibold text-white">
-            Historical depth and machine learning
+            What {formatNumber(totalDraws)} draws show
           </h2>
           <p>
-            Where available, the pipeline is designed to work with <strong className="text-slate-200">many years of winning-number history</strong>{' '}
-            (on the order of a decade or more depending on the game and source). That depth feeds both the dashboards above
-            and the <strong className="text-slate-200">machine learning predictors</strong>, which look for patterns in
-            features derived from that history. Each model encodes different assumptions; together they act as a small
-            “ensemble laboratory” rather than a single oracle.
+            Our dataset holds every result we have for the five games from {dataRange()}. The table sums it up.
+          </p>
+          <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+            <table className="data-table min-w-[640px]">
+              <thead>
+                <tr>
+                  <th scope="col">Game</th>
+                  <th scope="col" className="text-right">
+                    Draws
+                  </th>
+                  <th scope="col" className="text-right">
+                    Jackpot odds
+                  </th>
+                  <th scope="col" className="text-right">
+                    Draws with a jackpot winner
+                  </th>
+                  <th scope="col" className="text-right">
+                    Largest jackpot won
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {games.map((g) => (
+                  <tr key={g.key}>
+                    <th scope="row" className="whitespace-nowrap text-left font-normal text-white">
+                      {g.name}
+                    </th>
+                    <td className="text-right font-mono tabular">{formatNumber(g.draws)}</td>
+                    <td className="whitespace-nowrap text-right font-mono tabular">1 in {formatNumber(g.odds)}</td>
+                    <td className="text-right font-mono tabular">{formatNumber(g.jackpots.won)}</td>
+                    <td className="whitespace-nowrap text-right font-mono tabular">
+                      {g.jackpots.largest_won ? (
+                        <>
+                          {formatPeso(g.jackpots.largest_won)}
+                          <span className="block text-xs text-silver-500">{formatDate(g.jackpots.largest_won_date)}</span>
+                        </>
+                      ) : (
+                        '—'
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p>
+            The bigger the pool of balls, the longer the odds and the rarer the jackpot winners. The numbers themselves
+            behave the way random draws should. Sums cluster around the value math predicts, and the &quot;hot&quot;
+            numbers of the last 50 draws hit no more often than any others. The{' '}
+            <Link to="/methodology" className="link">
+              methodology
+            </Link>{' '}
+            page has the full test.
           </p>
         </section>
 
-        <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="models-heading">
-          <h2 id="models-heading" className="text-xl font-semibold text-white">
-            Models used in BayanWin
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="tools-heading">
+          <h2 id="tools-heading" className="text-xl font-semibold text-white">
+            What you can do on BayanWin
           </h2>
+          <ul className="list-disc pl-5 space-y-2">
+            <li>
+              <strong className="text-slate-200">See the latest results</strong> for every game, with the draw date and
+              the next draw day.
+            </li>
+            <li>
+              <strong className="text-slate-200">Check how often each number came up</strong> compared with what chance
+              predicts, and how long each number has gone without appearing. A long gap doesn&apos;t make a number
+              &quot;due.&quot;
+            </li>
+            <li>
+              <strong className="text-slate-200">Compare sums and products</strong> of winning numbers against a normal
+              distribution, to see which draws were typical and which were unusual.
+            </li>
+            <li>
+              <strong className="text-slate-200">Explore number pairs and sequences</strong> in the co-occurrence graph
+              and the Markov transition map.
+            </li>
+            <li>
+              <strong className="text-slate-200">Track each model over time.</strong> We store every pick and compare it
+              with the real result, so you can see how far off each model was.
+            </li>
+            <li>
+              <strong className="text-slate-200">Check your own ticket</strong> against past results with the ticket
+              checker.
+            </li>
+          </ul>
+        </section>
 
-          <div className="space-y-4 pl-0 border-l-2 border-electric-500/40 pl-4">
-            <div>
-              <h3 className="text-base font-semibold text-white">XGBoost</h3>
-              <p>
-                Gradient-boosted trees trained on tabular features from past draws; strong at capturing non-linear patterns
-                in structured inputs.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Decision Tree / ensemble variants</h3>
-              <p>
-                Interpretable tree-based models that split the feature space into regions—useful for frequency- and
-                rule-like structure in the data.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Anomaly detection</h3>
-              <p>
-                Monte Carlo / distribution-style views that highlight unusual combinations or bands (e.g. sums and products)
-                relative to a baseline—oriented toward <strong className="text-slate-200">rare-event</strong> style analysis
-                rather than a single “most likely” ticket.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Markov-style sequence models</h3>
-              <p>
-                Models that treat draws as a sequence and estimate <strong className="text-slate-200">transition-style relationships</strong>{' '}
-                between states. Ideas like this appear throughout applied math and engineering (including large-scale systems
-                that model linked states over time); here they summarize how consecutive draws relate in <em>your</em> historical
-                slice.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">NashHotFilter</h3>
-              <p>
-                A hybrid idea inspired by <strong className="text-slate-200">game-theoretic equilibrium</strong> concepts
-                associated with John Nash (popularized in film as <em>A Beautiful Mind</em>), combined with hot-number and
-                balance heuristics to produce structured candidate lines—still purely exploratory.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Deep reinforcement learning (DRL)</h3>
-              <p>
-                An agent-style model that can incorporate <strong className="text-slate-200">feedback from error / accuracy signals</strong>{' '}
-                over time, so behavior can shift as more prediction–result pairs exist in the database.
-              </p>
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-white">Miro — LLM synthesis</h3>
-              <p>
-                A <strong className="text-slate-200">multi-step large language model (LLM)</strong> workflow that reads the
-                same context bundle as the numeric models and produces a synthesized pick—similar in spirit to “swarm” or
-                multi-agent discussions you may see in modern ML communities, but implemented as a single coordinated pipeline
-                in this app. In the UI it appears as <strong className="text-slate-200">Miro</strong> (LLM synthesis), separate
-                from the six core numeric models.
-              </p>
-            </div>
-          </div>
+        <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="models-heading">
+          <h2 id="models-heading" className="text-xl font-semibold text-white">
+            The seven models
+          </h2>
+          <p>
+            Each model makes different assumptions about the draws. We show them side by side so you can see where they
+            agree and where they don&apos;t. None of them can change your odds.
+          </p>
+          <dl className="space-y-4 border-l-2 border-electric-500/40 pl-4">
+            {MODELS.map(([name, desc, href, linkLabel]) => (
+              <div key={name}>
+                <dt className="text-base font-semibold text-white">{name}</dt>
+                <dd className="mt-1">
+                  {desc}{' '}
+                  {href && (
+                    <Link to={href} className="link whitespace-nowrap">
+                      {linkLabel}
+                    </Link>
+                  )}
+                </dd>
+              </div>
+            ))}
+          </dl>
         </section>
 
         <section
@@ -174,26 +209,30 @@ function AboutBayanWin() {
           aria-labelledby="disclaimer-heading"
         >
           <h2 id="disclaimer-heading" className="text-lg font-semibold text-slate-300 mb-2">
-            Disclaimer
+            What BayanWin isn&apos;t
           </h2>
           <p>
-            This site is for <strong className="text-slate-300">education and entertainment only</strong>. It does not
-            provide financial, legal, or gambling advice. Past draws do not predict future outcomes. There are{' '}
-            <strong className="text-slate-300">no guaranteed wins</strong>. Play responsibly and only within the law in your
-            area.
+            BayanWin is for <strong className="text-slate-300">education and entertainment only</strong>. It isn&apos;t
+            financial, legal, or gambling advice. Past draws don&apos;t predict future ones, and there are{' '}
+            <strong className="text-slate-300">no guaranteed wins</strong>. You must be 18 or older to play PCSO games.
+            If you play, set a budget first. Our{' '}
+            <Link to="/responsible-play" className="link">
+              responsible play
+            </Link>{' '}
+            page explains how.
           </p>
           <p className="mt-3">
-            Start with the{' '}
+            To go deeper, read the{' '}
             <Link to="/methodology" className="link">
-              Methodology
-            </Link>{' '}
-            page, then read game-specific analyses like{' '}
+              methodology
+            </Link>
+            , then the{' '}
             <Link to="/blog/pcso-658-results-analysis" className="link">
-              PCSO 6/58 results analysis
+              6/58 results analysis
             </Link>{' '}
-            and{' '}
+            and the{' '}
             <Link to="/blog/pcso-649-results-analysis" className="link">
-              PCSO 6/49 results analysis
+              6/49 results analysis
             </Link>
             .
           </p>
