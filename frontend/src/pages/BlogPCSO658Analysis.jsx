@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import pcso658Image from '../assets/articles/pcso658.webp';
 import AuthorBio from '../components/AuthorBio';
 import NumberBall from '../components/NumberBall';
 import { gameStats, formatNumber, formatPercent, formatPeso, formatDate, dataRange } from '../data/stats';
@@ -87,6 +89,8 @@ function BlogPCSO658Analysis() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={pcso658Image} alt="A clear draw machine with numbered balls tumbling inside" />
 
         <section className={sectionClass}>
           <h2 className={h2Class}>Ultra Lotto 6/58 in numbers</h2>

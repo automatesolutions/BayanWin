@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import methodologyImage from '../assets/articles/methodology.webp';
 import AuthorBio from '../components/AuthorBio';
 import { allGames, formatNumber, formatPercent, dataRange } from '../data/stats';
 
@@ -27,6 +29,8 @@ function Methodology() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={methodologyImage} alt="Printed tables of draw numbers beside a laptop chart, a calculator, and a pencil" />
 
         {/* Data Sources */}
         <section className="space-y-4 text-sm leading-relaxed text-slate-300" aria-labelledby="method-data">

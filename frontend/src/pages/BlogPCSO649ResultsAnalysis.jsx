@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import pcso649Image from '../assets/articles/pcso649.webp';
 import AuthorBio from '../components/AuthorBio';
 import NumberBall from '../components/NumberBall';
 import { gameStats, formatNumber, formatPercent, formatPeso, formatDate, dataRange } from '../data/stats';
@@ -84,6 +86,8 @@ function BlogPCSO649ResultsAnalysis() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={pcso649Image} alt="Orange and white numbered lotto balls beside a blank ticket and a pen" />
 
         <section className={sectionClass}>
           <h2 className={h2Class}>Super Lotto 6/49 in numbers</h2>

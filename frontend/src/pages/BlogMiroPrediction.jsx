@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import miroImage from '../assets/articles/miro.webp';
 import AuthorBio from '../components/AuthorBio';
 import { allGames, formatNumber } from '../data/stats';
 
@@ -58,6 +60,8 @@ function BlogMiroPrediction() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={miroImage} alt="Six colored cards on a cork board, each tied by string to one card in the middle" />
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">
           <h2 className="text-xl font-semibold text-white">Where Miro sits</h2>

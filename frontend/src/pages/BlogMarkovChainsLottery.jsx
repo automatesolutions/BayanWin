@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import markovImage from '../assets/articles/markov.webp';
 import AuthorBio from '../components/AuthorBio';
 import { allGames, formatNumber, formatPercent, dataRange } from '../data/stats';
 
@@ -61,6 +63,8 @@ function BlogMarkovChainsLottery() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={markovImage} alt="A path of stepping stones crossing a misty pond" />
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="markov-what">
           <h2 id="markov-what" className="text-xl font-semibold text-white">

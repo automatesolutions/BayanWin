@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import nashImage from '../assets/articles/nash.webp';
 import AuthorBio from '../components/AuthorBio';
 import { allGames, formatNumber, dataRange } from '../data/stats';
 
@@ -40,6 +42,8 @@ function BlogNashHotFilter() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={nashImage} alt="Two hands playing rock, paper, scissors over a wooden table" />
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300">
           <h2 className="text-xl font-semibold text-white">Why the name comes from a film</h2>

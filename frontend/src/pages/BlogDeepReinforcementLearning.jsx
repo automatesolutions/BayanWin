@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import drlImage from '../assets/articles/drl.webp';
 import AuthorBio from '../components/AuthorBio';
 import { allGames, formatNumber, dataRange } from '../data/stats';
 
@@ -57,6 +59,8 @@ function BlogDeepReinforcementLearning() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={drlImage} alt="A small robot arm stacking colored blocks" />
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="drl-how">
           <h2 id="drl-how" className="text-xl font-semibold text-white">

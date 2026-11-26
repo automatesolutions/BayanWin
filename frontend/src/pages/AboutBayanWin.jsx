@@ -1,6 +1,8 @@
 import React from 'react';
 import { Link } from '../components/SiteLink';
 import ArticleMeta from '../components/ArticleMeta';
+import ArticleImage from '../components/ArticleImage';
+import aboutImage from '../assets/articles/about.webp';
 import AuthorBio from '../components/AuthorBio';
 import { AUTHOR } from '../seo/author';
 import { allGames, dataRange, formatDate, formatNumber, formatPeso } from '../data/stats';
@@ -36,6 +38,8 @@ function AboutBayanWin() {
           </p>
           <ArticleMeta />
         </header>
+
+        <ArticleImage src={aboutImage} alt="A desk at dusk with a laptop showing charts and a notebook of handwritten numbers, city lights outside" />
 
         <section className="space-y-3 text-sm leading-relaxed text-slate-300" aria-labelledby="overview-heading">
           <h2 id="overview-heading" className="text-xl font-semibold text-white">
