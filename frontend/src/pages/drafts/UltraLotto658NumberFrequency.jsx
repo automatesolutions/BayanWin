@@ -152,7 +152,7 @@ function UltraLotto658NumberFrequency() {
           <p className="text-sm text-silver-400">
             By{' '}
             <Link to="/about#who-runs-bayanwin" className="link">
-              Jonel Pericon
+              ZALEL LABS
             </Link>
           </p>
         </header>

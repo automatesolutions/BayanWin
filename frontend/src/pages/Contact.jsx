@@ -19,8 +19,8 @@ function Contact() {
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Contact BayanWin</h1>
           <p className="text-slate-400 text-sm leading-relaxed">
-            Send us feedback, bug reports, privacy requests, and questions about BayanWin. {AUTHOR.name} reads this
-            inbox. There&apos;s no form and no chatbot.
+            Send us feedback, bug reports, privacy requests, and questions about BayanWin. The {AUTHOR.name} team reads
+            this inbox. There&apos;s no form and no chatbot.
           </p>
         </header>
 

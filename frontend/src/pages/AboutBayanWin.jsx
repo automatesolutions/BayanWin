@@ -64,8 +64,8 @@ function AboutBayanWin() {
             Who runs BayanWin
           </h2>
           <p>
-            {AUTHOR.name} runs BayanWin from the {AUTHOR.location}, writes the articles on this site, and builds the
-            dashboard and the models.
+            BayanWin is made by {AUTHOR.name} in the {AUTHOR.location}. We write the articles on this site and build
+            the dashboard and the models.
           </p>
           <p>
             We built BayanWin to put PCSO draw history in one place and to test popular lotto ideas, like hot numbers,

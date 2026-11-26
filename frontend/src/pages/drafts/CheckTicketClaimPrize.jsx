@@ -48,7 +48,7 @@ function CheckTicketClaimPrize() {
           <p className="mt-3 text-xs text-silver-500">
             By{' '}
             <Link to="/about#who-runs-bayanwin" className="link">
-              Jonel Pericon
+              ZALEL LABS
             </Link>
           </p>
         </header>

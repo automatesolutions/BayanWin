@@ -17,16 +17,17 @@ const organization = {
   areaServed: { '@type': 'Country', name: 'Philippines' },
 };
 
-const PERSON_ID = `${SITE_URL}/#author`;
+const AUTHOR_ID = `${SITE_URL}/#author`;
 
-const person = {
-  '@type': 'Person',
-  '@id': PERSON_ID,
+// Articles are credited to the company that makes BayanWin.
+const author = {
+  '@type': 'Organization',
+  '@id': AUTHOR_ID,
   name: AUTHOR.name,
   url: AUTHOR.url,
   email: AUTHOR.email,
-  homeLocation: { '@type': 'Country', name: AUTHOR.location },
-  worksFor: { '@type': 'Organization', name: AUTHOR.org, parentOrganization: { '@type': 'Organization', name: AUTHOR.parentOrg } },
+  areaServed: { '@type': 'Country', name: AUTHOR.location },
+  parentOrganization: { '@type': 'Organization', name: AUTHOR.parentOrg },
 };
 
 const website = {
@@ -210,14 +211,14 @@ function buildJsonLd(path, meta, canonical) {
 
   if (meta.article) {
     const a = meta.article;
-    graph.push(person);
+    graph.push(author);
     graph.push({
       '@type': a.blog ? 'BlogPosting' : 'Article',
       headline: a.headline,
       description: meta.description,
       datePublished: a.published,
       dateModified: a.modified,
-      author: { '@id': PERSON_ID },
+      author: { '@id': AUTHOR_ID },
       publisher: { '@id': ORG_ID },
       mainEntityOfPage: { '@id': page['@id'] },
       image: `${SITE_URL}/og-image.png`,
