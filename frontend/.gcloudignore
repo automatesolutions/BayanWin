@@ -1,0 +1,9 @@
+# Files gcloud builds submit leaves out of the upload (Docker uses .dockerignore).
+.gcloudignore
+.git
+node_modules
+dist
+dist-ssr
+.env
+.env.*
+*.log
