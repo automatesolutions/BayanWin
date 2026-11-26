@@ -2,19 +2,40 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/favicon.png" />
-    <link rel="apple-touch-icon" href="/favicon.png" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Favicons for browsers and Google Search. Stable URLs: never rename these files
+         (Google caches them). /favicon.png stays on the server for old caches. -->
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/icons/favicon-96.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0C1119" />
+    <!-- Installable app (Android and desktop Chrome use the manifest; iOS reads the apple-* tags) -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="BayanWin" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <!-- Type: General Sans (display) + Satoshi (body) from Fontshare, JetBrains Mono for data -->
     <link rel="preconnect" href="https://api.fontshare.com" crossorigin>
     <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin>
-    <!-- One family per request: the Fontshare API only returns the first f[] when several are combined. -->
-    <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
-    <link href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap" rel="stylesheet">
+    <!-- One family per request: the Fontshare API only returns the first f[] when several are combined.
+         Font CSS loads without blocking the first paint; text shows in the fallback font, then swaps. -->
+    <link rel="preload" as="style" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <link rel="preload" as="style" href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap" onload="this.onload=null;this.rel='stylesheet'">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+      <link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700&display=swap" rel="stylesheet">
+      <link href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600,700&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    </noscript>
+    <!-- Page switches are full loads (ad pages need their own <head>), so Chrome fetches
+         a page when you hover or press its link. Prefetch only: nothing runs until you click. -->
+    <script type="speculationrules">
+      {"prefetch": [{"where": {"and": [{"href_matches": "/*"}, {"not": {"href_matches": "/api/*"}}]}, "eagerness": "moderate"}]}
+    </script>
     <title>BayanWin - Algorithmic Lottery Prediction Philippines | PCSO Analysis</title>
     <meta
       name="description"

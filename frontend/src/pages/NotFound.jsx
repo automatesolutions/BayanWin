@@ -1,5 +1,5 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../components/SiteLink';
 import { TbArrowLeft, TbMapOff } from 'react-icons/tb';
 
 function NotFound() {

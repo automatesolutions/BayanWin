@@ -1,4 +1,5 @@
 import { HOME_FAQ } from './faq';
+import { AUTHOR } from './author';
 
 const SITE_URL = 'https://bayanwin.net';
 const ORG_ID = `${SITE_URL}/#organization`;
@@ -9,17 +10,31 @@ const organization = {
   '@id': ORG_ID,
   name: 'BayanWin',
   url: SITE_URL,
-  logo: { '@type': 'ImageObject', url: `${SITE_URL}/favicon.png` },
-  email: 'sycat0378@gmail.com',
+  logo: { '@type': 'ImageObject', url: `${SITE_URL}/icons/icon-512.png`, width: 512, height: 512 },
+  email: AUTHOR.email,
   description:
     'Free statistical analysis of Philippine PCSO lotto draw history (6/42, 6/45, 6/49, 6/55, 6/58) for education and entertainment.',
   areaServed: { '@type': 'Country', name: 'Philippines' },
+};
+
+const AUTHOR_ID = `${SITE_URL}/#author`;
+
+// Articles are credited to the company that makes BayanWin.
+const author = {
+  '@type': 'Organization',
+  '@id': AUTHOR_ID,
+  name: AUTHOR.name,
+  url: AUTHOR.url,
+  email: AUTHOR.email,
+  areaServed: { '@type': 'Country', name: AUTHOR.location },
+  parentOrganization: { '@type': 'Organization', name: AUTHOR.parentOrg },
 };
 
 const website = {
   '@type': 'WebSite',
   '@id': SITE_ID,
   name: 'BayanWin',
+  alternateName: 'BayanWin PH',
   url: SITE_URL,
   inLanguage: 'en-PH',
   publisher: { '@id': ORG_ID },
@@ -43,14 +58,14 @@ const routes = {
       'Learn how BayanWin analyzes PCSO historical data with Markov, game theory, and AI models for responsible lottery statistics in the Philippines.',
     name: 'About',
     pageType: 'AboutPage',
-    article: { headline: 'About BayanWin', published: '2026-04-26', modified: '2026-05-23' },
+    article: { headline: 'About BayanWin', published: '2026-04-26', modified: '2026-11-26' },
   },
   '/methodology': {
     title: 'Lottery Methodology & Data Sources Philippines | BayanWin',
     description:
       'Understand BayanWin methodology: PCSO data sources, model assumptions, update cadence, and limits of algorithmic lottery prediction.',
     name: 'Methodology',
-    article: { headline: 'BayanWin Methodology', published: '2026-04-30', modified: '2026-05-24', section: 'Methodology' },
+    article: { headline: 'How BayanWin makes its picks', published: '2026-04-30', modified: '2026-11-26', section: 'Methodology' },
   },
   '/responsible-play': {
     title: 'Responsible Play Guidance | BayanWin',
@@ -73,9 +88,9 @@ const routes = {
     name: 'Markov chains',
     article: {
       blog: true,
-      headline: 'The Fascinating World of Markov Chains: From Drunkard’s Walks to Google’s Algorithms',
+      headline: 'Do PCSO lotto draws have memory? A Markov chain check',
       published: '2026-04-29',
-      modified: '2026-05-23',
+      modified: '2026-11-26',
       section: 'Algorithms',
     },
   },
@@ -88,7 +103,7 @@ const routes = {
       blog: true,
       headline: 'NashHotFilter and the spirit of A Beautiful Mind',
       published: '2026-04-26',
-      modified: '2026-10-28',
+      modified: '2026-11-26',
       section: 'Algorithms',
     },
   },
@@ -99,9 +114,9 @@ const routes = {
     name: 'Deep reinforcement learning',
     article: {
       blog: true,
-      headline: 'Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph',
+      headline: 'Can reinforcement learning beat a PCSO lotto draw?',
       published: '2026-04-29',
-      modified: '2026-05-23',
+      modified: '2026-11-26',
       section: 'AI',
     },
   },
@@ -112,9 +127,9 @@ const routes = {
     name: '6/58 results analysis',
     article: {
       blog: true,
-      headline: 'PCSO 6/58 Results Analysis in the Philippines',
+      headline: 'PCSO 6/58 results: what 11 years of draws show',
       published: '2026-05-09',
-      modified: '2026-05-23',
+      modified: '2026-11-26',
       section: 'Game Analysis',
     },
   },
@@ -125,9 +140,9 @@ const routes = {
     name: '6/49 results analysis',
     article: {
       blog: true,
-      headline: 'PCSO 6/49 Results Analysis in the Philippines',
+      headline: 'PCSO 6/49 results: what 11 years of draws show',
       published: '2026-05-09',
-      modified: '2026-05-23',
+      modified: '2026-11-26',
       section: 'Game Analysis',
     },
   },
@@ -140,7 +155,7 @@ const routes = {
       blog: true,
       headline: 'How Miro merges six models into one pick',
       published: '2026-04-26',
-      modified: '2026-10-28',
+      modified: '2026-11-26',
       section: 'AI',
     },
   },
@@ -164,6 +179,12 @@ const routes = {
     pageType: 'ContactPage',
   },
 };
+
+/** Short page name, as used in breadcrumbs ("Methodology", "Markov chains"). */
+export const pageName = (path) => routes[path]?.name;
+
+/** Every public page, in sitemap order. Prerender and the build check read this list. */
+export const PUBLIC_PATHS = Object.keys(routes);
 
 function breadcrumb(path) {
   const items = [{ name: 'Home', url: `${SITE_URL}/` }];
@@ -190,16 +211,17 @@ function buildJsonLd(path, meta, canonical) {
 
   if (meta.article) {
     const a = meta.article;
+    graph.push(author);
     graph.push({
       '@type': a.blog ? 'BlogPosting' : 'Article',
       headline: a.headline,
       description: meta.description,
       datePublished: a.published,
       dateModified: a.modified,
-      author: { '@id': ORG_ID },
+      author: { '@id': AUTHOR_ID },
       publisher: { '@id': ORG_ID },
       mainEntityOfPage: { '@id': page['@id'] },
-      image: `${SITE_URL}/favicon.png`,
+      image: `${SITE_URL}/og-image.png`,
       inLanguage: 'en-PH',
       ...(a.section ? { articleSection: a.section } : {}),
     });

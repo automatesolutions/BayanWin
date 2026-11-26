@@ -5,6 +5,12 @@ import { HelmetProvider } from 'react-helmet-async';
 import { Writable } from 'node:stream';
 import App from './App';
 
+// Shared with scripts/prerender.mjs and scripts/check-dist.mjs, so the ad list,
+// the route list and the consent key each live in one place.
+export { AD_ELIGIBLE_PATHS, ADSENSE_CLIENT_ID, MIN_PUBLISHER_WORDS, buildAdSenseScriptSrc } from './constants/adsense';
+export { CONSENT_STORAGE_KEY } from './utils/cookieConsent';
+export { PUBLIC_PATHS } from './seo/routeSeo';
+
 /**
  * Build-time render of one route to static HTML (see scripts/prerender.mjs).
  * Waits for every lazy page to resolve so the output holds the full article,

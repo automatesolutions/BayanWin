@@ -24,3 +24,11 @@ if (root.hasChildNodes()) {
   ReactDOM.createRoot(root).render(app)
 }
 
+// Offline shell and the install prompt (public/sw.js). Production only, so dev
+// never serves stale modules from a cache.
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {})
+  })
+}
+

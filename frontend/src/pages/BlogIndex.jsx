@@ -1,55 +1,9 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../components/SiteLink';
 import { TbArrowRight, TbClock } from 'react-icons/tb';
 import Reveal from '../components/ui/Reveal';
 import { getSeoForPath } from '../seo/routeSeo';
-
-const POSTS = [
-  {
-    slug: 'nash-hotfilter',
-    title: 'NashHotFilter & A Beautiful Mind',
-    subtitle: 'Mixed strategies in plain words, and how the model balances eight tickets with hot-number counts.',
-    tag: 'Algorithms',
-    readMins: 6,
-  },
-  {
-    slug: 'miro-prediction',
-    title: 'How Miro merges six models into one pick',
-    subtitle: 'The data Miro reads, its two language model rounds, and the checks that keep every line valid.',
-    tag: 'LLM',
-    readMins: 6,
-  },
-  {
-    slug: 'pcso-658-results-analysis',
-    title: 'PCSO 6/58 Results Analysis Philippines',
-    subtitle:
-      'A practical breakdown of Ultra Lotto 6/58 historical patterns, frequency ranges, and interpretation limits.',
-    tag: 'Game Analysis',
-    readMins: 9,
-  },
-  {
-    slug: 'pcso-649-results-analysis',
-    title: 'PCSO 6/49 Results Analysis Philippines',
-    subtitle:
-      'How to interpret Super Lotto 6/49 draw behavior using transition, gap, and error-distance context.',
-    tag: 'Game Analysis',
-    readMins: 9,
-  },
-  {
-    slug: 'markov-chains-lottery',
-    title: "The Fascinating World of Markov Chains: From Drunkard’s Walks to Google’s Algorithms",
-    subtitle: "From drunkard's walks to Google's algorithms, and why memoryless systems matter.",
-    tag: 'Algorithms',
-    readMins: 10,
-  },
-  {
-    slug: 'deep-reinforcement-learning',
-    title: 'Deep Reinforcement Learning: Teaching Machines Through Trial and Triumph',
-    subtitle: 'From Atari to AlphaGo: how agents learn through trial, reward, and adaptation.',
-    tag: 'AI · DRL',
-    readMins: 11,
-  },
-];
+import { POSTS } from '../content/posts';
 
 function BlogIndex() {
   const [featured, ...rest] = POSTS;

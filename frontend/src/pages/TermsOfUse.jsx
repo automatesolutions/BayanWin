@@ -1,7 +1,8 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../components/SiteLink';
+import { AUTHOR } from '../seo/author';
 
-const CONTACT_EMAIL = 'sycat0378@gmail.com';
+const CONTACT_EMAIL = AUTHOR.email;
 
 function TermsOfUse() {
   return (

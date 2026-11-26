@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../components/SiteLink';
 import { TbArrowDown, TbArrowRight, TbAlertTriangle } from 'react-icons/tb';
 import GameSelector from '../components/GameSelector';
 import PredictionDisplay from '../components/PredictionDisplay';
@@ -12,6 +12,7 @@ import ErrorDistanceAnalysis from '../components/ErrorDistanceAnalysis';
 import CooccurrenceGraph from '../components/CooccurrenceGraph';
 import MarkovGraph from '../components/MarkovGraph';
 import CouncilPanel from '../components/CouncilPanel';
+import InstallAppButton from '../components/InstallAppButton';
 import ParticleReveal from '../components/canvasui/ParticleReveal';
 import Notice from '../components/ui/Notice';
 import { HOME_FAQ } from '../seo/faq';
@@ -22,6 +23,8 @@ import { gsap, SplitText, ScrollTrigger, EASE, MOTION_OK, DESKTOP_MOTION } from 
 import { GAMES, GAME_ORDER } from '../utils/constants';
 import { drawDaysLabel } from '../utils/drawSchedule';
 import { generatePredictionsStream } from '../services/api';
+import { allGames, dataRange, formatNumber, gameStats } from '../data/stats';
+import { POSTS } from '../content/posts';
 
 const errorText = (error) => {
   const detail = error?.response?.data?.detail;
@@ -35,12 +38,23 @@ const combinations = (n, k) => {
 };
 
 const GAME_NOTES = {
-  lotto_6_42: 'The most accessible PCSO game with 42 balls. Lower jackpots but the best odds among the six-ball draws.',
-  mega_lotto_6_45: 'Mid-tier six-ball draw with 45 numbers. Jackpots start at ₱9 million and roll over until someone matches all six.',
-  super_lotto_6_49: 'A popular game with 49 numbers and a ₱16 million minimum jackpot.',
-  grand_lotto_6_55: 'One of the biggest PCSO jackpot games, with 55 numbers. Jackpots often climb into the hundreds of millions of pesos.',
-  ultra_lotto_6_58: 'The largest PCSO jackpot game with 58 balls. Historic jackpots have passed ₱1 billion, making it the most-watched draw in the Philippines.',
+  lotto_6_42: 'The smallest pool, with 42 balls, so the best jackpot odds of the five games. Jackpots are smaller.',
+  mega_lotto_6_45: '45 balls. Jackpots start at ₱9 million and roll over until someone matches all six.',
+  super_lotto_6_49: '49 balls, with a ₱16 million minimum jackpot.',
+  grand_lotto_6_55: '55 balls. Jackpots often climb into the hundreds of millions of pesos.',
+  ultra_lotto_6_58: 'The largest pool, with 58 balls, and the biggest jackpots. One jackpot won in 2018 passed ₱1 billion.',
 };
+
+// Worked examples in "How to read BayanWin" use 6/49.
+const example = gameStats('6/49');
+const exampleCounts = Object.values(example.frequency.all);
+const exampleRange = { min: Math.min(...exampleCounts), max: Math.max(...exampleCounts) };
+const totalDraws = allGames().reduce((n, g) => n + g.draws, 0);
+
+const GUIDES = [
+  ...POSTS.map((p) => ({ to: `/blog/${p.slug}`, title: p.title, summary: p.subtitle })),
+  { to: '/methodology', title: 'How BayanWin makes its picks', summary: 'Where our data comes from, how each model works, and what none of them can do.' },
+];
 
 const METHODS = [
   ['Markov chains', 'Treats consecutive draws as a sequence and models transition probabilities between states: how outcomes relate to the draws before them.', '/blog/markov-chains-lottery'],
@@ -166,6 +180,7 @@ function HomePage() {
               </Link>
             </div>
             <p className="mt-6 text-sm text-silver-500">No sign-up. Results sync from PCSO draws every 90 seconds.</p>
+            <InstallAppButton className="btn-ghost mt-3 -ml-3" />
           </div>
 
           <LatestDrawsBoard onAnalyze={analyzeFromBoard} />
@@ -174,7 +189,115 @@ function HomePage() {
 
       {/* Everything below slides over the pinned hero. */}
       <div className="relative z-10 bg-charcoal-900 shadow-[0_-24px_48px_-24px_rgba(0,0,0,0.8)]">
-        {/* ── Screen 2: the tool ── */}
+        {/* ── Screen 2: how to read BayanWin (content first, then the tool) ── */}
+        <section
+          id="how-to-read"
+          className="border-t border-white/[0.06] bg-charcoal-950/50 py-16 sm:py-24"
+          aria-labelledby="how-to-read-heading"
+        >
+          <div className="container mx-auto space-y-14 px-4 sm:px-6">
+            <ScrollWords className="max-w-4xl font-display text-3xl font-semibold leading-tight text-white sm:text-4xl lg:text-5xl">
+              A lottery draw is random. No model here can change your odds. What it can do is show how each game has
+              behaved, and let you check that for yourself.
+            </ScrollWords>
+
+            <div className="grid gap-10 lg:grid-cols-[1fr_1.4fr] lg:gap-16">
+              <div className="max-w-prose space-y-4 text-base leading-relaxed text-silver-300">
+                <h2 id="how-to-read-heading" className="section-title">
+                  How to read BayanWin
+                </h2>
+                <p>
+                  BayanWin collects every PCSO draw for <strong className="text-white">6/42, 6/45, 6/49, 6/55, and 6/58</strong>.
+                  Our dataset runs from {dataRange()}, {formatNumber(totalDraws)} draws in all, and new results sync
+                  as PCSO announces them.
+                </p>
+                <p>
+                  The dashboard below shows the latest results, how often each number came up, and one line of six
+                  numbers from each of seven models. Every pick links to how its model works, so you can judge it
+                  yourself.
+                </p>
+                <p>
+                  The examples here use Super Lotto 6/49. You can run the same checks for any game in the dashboard.
+                </p>
+              </div>
+
+              <dl className="divide-y divide-white/[0.06] border-y border-white/[0.06]">
+                <div className="grid gap-1 py-5 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                  <dt className="font-display text-base font-semibold text-white">How often a number came up</dt>
+                  <dd className="text-sm leading-relaxed text-silver-400">
+                    In {formatNumber(example.draws)} draws, each 6/49 number should come up about{' '}
+                    {formatNumber(example.frequency.expected)} times. The real counts run from {exampleRange.min} to{' '}
+                    {exampleRange.max}. A spread like that is normal for random draws.
+                  </dd>
+                </div>
+                <div className="grid gap-1 py-5 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                  <dt className="font-display text-base font-semibold text-white">Hot and cold numbers</dt>
+                  <dd className="text-sm leading-relaxed text-silver-400">
+                    The 6 most drawn numbers of the last 50 draws matched {example.backtests.hot_six.mean.toFixed(2)}{' '}
+                    numbers of the next draw on average. A random line matches{' '}
+                    {example.backtests.expected_mean.toFixed(2)}. Hot numbers aren&apos;t a signal.
+                  </dd>
+                </div>
+                <div className="grid gap-1 py-5 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                  <dt className="font-display text-base font-semibold text-white">Sums</dt>
+                  <dd className="text-sm leading-relaxed text-silver-400">
+                    Half of all 6/49 draws add up to between {example.sum.middle_half[0]} and{' '}
+                    {example.sum.middle_half[1]}. That shows what a typical draw looks like. It doesn&apos;t make one
+                    line more likely to win: every combination has the same chance.
+                  </dd>
+                </div>
+                <div className="grid gap-1 py-5 sm:grid-cols-[11rem_1fr] sm:gap-6">
+                  <dt className="font-display text-base font-semibold text-white">Model picks</dt>
+                  <dd className="text-sm leading-relaxed text-silver-400">
+                    When several models pick the same number, that tells you how the models read the history. It
+                    isn&apos;t a forecast.
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
+            <div className="space-y-6">
+              <div className="max-w-2xl space-y-3">
+                <h3 id="games-heading" className="font-display text-xl font-semibold text-white sm:text-2xl">
+                  Your odds in each game
+                </h3>
+                <p className="lede">Every game is pick 6. The more balls, the bigger the jackpot and the longer the odds.</p>
+              </div>
+              <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+                <table className="data-table min-w-[720px]">
+                  <thead>
+                    <tr>
+                      <th scope="col">Game</th>
+                      <th scope="col" className="text-right">Jackpot odds</th>
+                      <th scope="col">Draw days</th>
+                      <th scope="col">About</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {GAME_ORDER.map((id) => {
+                      const g = GAMES[id];
+                      return (
+                        <tr key={id}>
+                          <th scope="row" className="whitespace-nowrap py-4 pr-6 text-left align-top font-normal">
+                            <span className="block font-mono text-base font-semibold text-white tabular">6/{g.maxNumber}</span>
+                            <span className="text-sm text-silver-400">{g.name.replace(/\s*6\/\d+$/, '')}</span>
+                          </th>
+                          <td className="whitespace-nowrap py-4 text-right align-top font-mono tabular">
+                            1 in {combinations(g.maxNumber, 6).toLocaleString('en-US')}
+                          </td>
+                          <td className="whitespace-nowrap py-4 align-top">{drawDaysLabel(g.drawDays)}</td>
+                          <td className="max-w-md py-4 align-top text-silver-400">{GAME_NOTES[id]}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Screen 3: the tool ── */}
         <section
           id="tool"
           ref={toolRef}
@@ -228,7 +351,32 @@ function HomePage() {
           )}
         </section>
 
-        {/* ── Screen 3: how a pick is made ── */}
+        {/* ── Screen 4: guides ── */}
+        <section className="border-t border-white/[0.06] py-16 sm:py-24" aria-labelledby="guides-heading">
+          <div className="container mx-auto grid gap-10 px-4 sm:px-6 lg:grid-cols-[1fr_2fr]">
+            <Reveal className="space-y-3">
+              <h2 id="guides-heading" className="section-title">
+                Guides
+              </h2>
+              <p className="lede">Each guide answers one question with our own draw data.</p>
+              <Link to="/blog" className="inline-flex items-center gap-1 pt-2 text-sm font-medium text-electric-300 hover:text-electric-200">
+                See all articles <TbArrowRight aria-hidden />
+              </Link>
+            </Reveal>
+            <Reveal as="ul" className="divide-y divide-white/[0.06] border-y border-white/[0.06]">
+              {GUIDES.map((g) => (
+                <li key={g.to} data-reveal className="py-5">
+                  <Link to={g.to} className="font-display text-base font-semibold text-white hover:text-electric-200">
+                    {g.title}
+                  </Link>
+                  <p className="mt-1 max-w-prose text-sm leading-relaxed text-silver-400">{g.summary}</p>
+                </li>
+              ))}
+            </Reveal>
+          </div>
+        </section>
+
+        {/* ── Screen 5: how a pick is made ── */}
         <section className="border-t border-white/[0.06] py-16 sm:py-24" aria-labelledby="pipeline-heading">
           <div className="container mx-auto px-4 sm:px-6">
             <Reveal className="mb-10 max-w-2xl space-y-3">
@@ -240,78 +388,6 @@ function HomePage() {
               </p>
             </Reveal>
             <PipelineDiagram />
-          </div>
-        </section>
-
-        {/* ── Screen 4: the honest part ── */}
-        <section className="border-t border-white/[0.06] bg-charcoal-950/50 py-20 sm:py-28" aria-labelledby="honest-heading">
-          <div className="container mx-auto px-4 sm:px-6">
-            <h2 id="honest-heading" className="sr-only">
-              What BayanWin can and can&apos;t do
-            </h2>
-            <ScrollWords className="max-w-4xl font-display text-3xl font-semibold leading-tight text-white sm:text-4xl lg:text-5xl">
-              A lottery draw is random. No model here can change your odds. What it can do is show how each game has
-              behaved, and let you check that for yourself.
-            </ScrollWords>
-            <Reveal className="mt-14 grid gap-8 text-base leading-relaxed text-silver-300 md:grid-cols-2">
-              <p data-reveal className="max-w-prose">
-                BayanWin is a free analytics dashboard for Philippine PCSO lottery draws. We collect years of official
-                draw history for <strong className="text-white">6/42, 6/45, 6/49, 6/55, and 6/58</strong> and run it
-                through statistical and machine-learning models: Markov chains, game-theory filters, deep reinforcement
-                learning, XGBoost, anomaly detection, and a language-model synthesis layer.
-              </p>
-              <p data-reveal className="max-w-prose">
-                Every output comes with its reasoning and a link to the methodology, so you can judge the tools instead of
-                trusting a black box. Students, data hobbyists, and players get the same interactive charts,
-                co-occurrence graphs, Markov transition maps, and model picks.{' '}
-                <Link to="/responsible-play" className="link">
-                  Play responsibly
-                </Link>
-                .
-              </p>
-            </Reveal>
-          </div>
-        </section>
-
-        {/* ── Screen 5: the games ── */}
-        <section className="border-t border-white/[0.06] py-16 sm:py-24" aria-labelledby="games-heading">
-          <div className="container mx-auto px-4 sm:px-6">
-            <Reveal className="mb-8 max-w-2xl space-y-3">
-              <h2 id="games-heading" className="section-title">
-                Five PCSO games, side by side
-              </h2>
-              <p className="lede">Every game is pick 6. The more balls, the bigger the jackpot and the longer the odds.</p>
-            </Reveal>
-            <div className="-mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-              <table className="data-table min-w-[720px]">
-                <thead>
-                  <tr>
-                    <th scope="col">Game</th>
-                    <th scope="col" className="text-right">Jackpot odds</th>
-                    <th scope="col">Draw days</th>
-                    <th scope="col">About</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {GAME_ORDER.map((id) => {
-                    const g = GAMES[id];
-                    return (
-                      <tr key={id}>
-                        <th scope="row" className="whitespace-nowrap py-4 pr-6 text-left align-top font-normal">
-                          <span className="block font-mono text-base font-semibold text-white tabular">6/{g.maxNumber}</span>
-                          <span className="text-sm text-silver-400">{g.name.replace(/\s*6\/\d+$/, '')}</span>
-                        </th>
-                        <td className="whitespace-nowrap py-4 text-right align-top font-mono tabular">
-                          1 in {combinations(g.maxNumber, 6).toLocaleString('en-US')}
-                        </td>
-                        <td className="whitespace-nowrap py-4 align-top">{drawDaysLabel(g.drawDays)}</td>
-                        <td className="max-w-md py-4 align-top text-silver-400">{GAME_NOTES[id]}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
           </div>
         </section>
 

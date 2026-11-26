@@ -1,7 +1,10 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../components/SiteLink';
+import { AUTHOR } from '../seo/author';
+import { AD_ELIGIBLE_PATHS } from '../constants/adsense';
+import { pageName } from '../seo/routeSeo';
 
-const CONTACT_EMAIL = 'sycat0378@gmail.com';
+const CONTACT_EMAIL = AUTHOR.email;
 
 function PrivacyPolicy() {
   return (
@@ -18,7 +21,7 @@ function PrivacyPolicy() {
         <header>
           <h1 className="text-3xl font-bold text-white mb-2">Privacy Policy</h1>
           <p className="text-slate-400">
-            Last updated: October 28, 2026. BayanWin (“we”, “us”) operates the website{' '}
+            Last updated: November 26, 2026. BayanWin (“we”, “us”) operates the website{' '}
             <strong className="text-slate-300">bayanwin.net</strong> (the “Site”), primarily for users in the{' '}
             <strong className="text-slate-300">Philippines</strong>.
           </p>
@@ -67,8 +70,10 @@ function PrivacyPolicy() {
           </h2>
           <p className="text-slate-300">
             <strong className="text-slate-200">Necessary storage:</strong> We save your cookie choice in your browser’s
-            local storage, so the banner doesn’t ask again on every visit. The Site has no accounts and sets no login
-            cookies.
+            local storage, so the banner doesn’t ask again on every visit. If you close the “Add to your phone”
+            prompt, we save the date in local storage and hide the prompt for 14 days. To work offline, the Site’s
+            service worker keeps a copy of the pages and files you visit in your browser’s cache. It never stores ad
+            or analytics requests. The Site has no accounts and sets no login cookies.
           </p>
           <p className="text-slate-300">
             <strong className="text-slate-200">Analytics:</strong> We don’t run an analytics service on the Site at this
@@ -79,9 +84,22 @@ function PrivacyPolicy() {
             <strong className="text-slate-200">Advertising:</strong> We use Google AdSense to show ads on some pages.
             Third-party vendors, including Google, use cookies to serve ads based on your prior visits to this website or
             other websites. Google’s use of advertising cookies enables it and its partners to serve ads to you based on
-            your visits to this Site and other sites on the internet.
+            your visits to this Site and other sites on the internet. Google’s advertising cookies include the
+            DoubleClick cookie, which Google and its partners use to choose and measure ads.
           </p>
           <ul className="list-disc pl-5 space-y-2 text-slate-300">
+            <li>
+              To see how Google uses cookies in ads, read{' '}
+              <a
+                href="https://policies.google.com/technologies/ads"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="link"
+              >
+                How Google uses cookies in advertising
+              </a>
+              .
+            </li>
             <li>
               You can opt out of personalized advertising in Google’s{' '}
               <a href="https://adssettings.google.com" target="_blank" rel="noopener noreferrer" className="link">
@@ -118,9 +136,21 @@ function PrivacyPolicy() {
             EEA, the UK, and Switzerland, Google may also show its own consent message before ads load.
           </p>
           <p className="text-slate-300">
-            <strong className="text-slate-200">Where ads appear:</strong> Ads load only on our long-form articles: About
-            BayanWin, Methodology, and the individual Blog articles. We don’t show ads on the prediction dashboard, the
-            Blog list, Responsible Play, Privacy, Terms, Contact, or error pages.
+            <strong className="text-slate-200">Where ads appear:</strong> Google ads load only on these{' '}
+            {AD_ELIGIBLE_PATHS.size} long-form pages:
+          </p>
+          <ul className="list-disc pl-5 space-y-1 text-slate-300">
+            {[...AD_ELIGIBLE_PATHS].map((path) => (
+              <li key={path}>
+                <Link to={path} className="link">
+                  {pageName(path)}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          <p className="text-slate-300">
+            Every other page has no ads. That includes the dashboard, the Blog list, Responsible Play, this Privacy
+            Policy, the Terms of Use, Contact, and error pages.
           </p>
         </section>
 
@@ -149,7 +179,7 @@ function PrivacyPolicy() {
 
         <section className="space-y-3" aria-labelledby="pp-rights">
           <h2 id="pp-rights" className="text-xl font-semibold text-white">
-            Your rights (Philippines — Data Privacy Act)
+            Your rights under the Data Privacy Act
           </h2>
           <p className="text-slate-300">
             If you are a <strong className="text-slate-200">data subject</strong> under the DPA, you may have rights

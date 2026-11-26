@@ -1,6 +1,8 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { getSeoForPath } from '../seo/routeSeo';
+import { AUTHOR } from '../seo/author';
+import { Link } from './SiteLink';
 
 // Fixed locale and UTC so the prerendered HTML matches the client on hydration.
 const fmt = (iso) =>
@@ -19,7 +21,11 @@ function ArticleMeta({ className = 'mt-3' }) {
 
   return (
     <p className={`text-xs text-silver-500 ${className}`}>
-      By the BayanWin team · Published <time dateTime={article.published}>{fmt(article.published)}</time>
+      By{' '}
+      <Link to="/about#who-runs-bayanwin" className="link">
+        {AUTHOR.name}
+      </Link>{' '}
+      · Published <time dateTime={article.published}>{fmt(article.published)}</time>
       {article.modified !== article.published && (
         <>
           {' '}

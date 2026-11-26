@@ -19,12 +19,14 @@
     "@vitejs/plugin-react": "^4.2.1",
     "autoprefixer": "^10.4.16",
     "postcss": "^8.4.32",
+    "sharp": "^0.33.5",
     "tailwindcss": "^3.3.6",
     "vite": "^5.0.8"
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build && vite build --ssr src/entry-server.jsx --outDir dist-ssr && node scripts/prerender.mjs",
-    "preview": "vite preview"
+    "build": "vite build && vite build --ssr src/entry-server.jsx --outDir dist-ssr && node scripts/prerender.mjs && node scripts/check-dist.mjs",
+    "preview": "vite preview",
+    "icons": "node scripts/make-icons.mjs"
   }
 }

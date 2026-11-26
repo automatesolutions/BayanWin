@@ -16,9 +16,9 @@ COPY . .
 ARG VITE_API_URL=http://localhost:5000
 ENV VITE_API_URL=$VITE_API_URL
 
-# Build the app and prerender every route to static HTML
+# Build the app, prerender every route to static HTML, then run the AdSense/link checks
 # (npx avoids missing +x on node_modules/.bin in some Cloud Build layers)
-RUN npx vite build && npx vite build --ssr src/entry-server.jsx --outDir dist-ssr && node scripts/prerender.mjs
+RUN npx vite build && npx vite build --ssr src/entry-server.jsx --outDir dist-ssr && node scripts/prerender.mjs && node scripts/check-dist.mjs
 
 # Production stage
 FROM nginx:alpine
